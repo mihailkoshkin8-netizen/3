@@ -1,4 +1,4 @@
--- WorkClient | Blox Strike | v30.8 | by WorkSaturn17940
+-- WorkClient | Blox Strike | v30.9 | by WorkSaturn17940
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -54,7 +54,6 @@ local function detectExecutorName()
 end
 executorName=detectExecutorName()
 
--- Executor capability test (sUNC-like)
 local executorSupport={}
 local function runExecTest()
     local checks={
@@ -103,10 +102,8 @@ local function canRunFeature(feature)
     return true
 end
 
--- UI Palette
 local UI={bg=Color3.fromRGB(13,13,17),topbar=Color3.fromRGB(20,20,26),panel=Color3.fromRGB(17,17,22),panel2=Color3.fromRGB(24,24,30),panel3=Color3.fromRGB(30,30,38),border=Color3.fromRGB(42,42,52),borderHi=Color3.fromRGB(72,72,88),accent=Color3.fromRGB(80,190,255),text=Color3.fromRGB(230,232,240),textDim=Color3.fromRGB(140,144,158),textMute=Color3.fromRGB(100,104,118),good=Color3.fromRGB(70,210,130),bad=Color3.fromRGB(235,85,85),warn=Color3.fromRGB(235,190,80),yellow=Color3.fromRGB(255,220,60),freeze=Color3.fromRGB(140,200,255),input=Color3.fromRGB(22,22,28)}
 
--- RANKS with new supporter & premium
 local RANKS={
     player={level=0,color=Color3.fromRGB(180,180,190),access={}},
     supporter={level=1,color=Color3.fromRGB(255,220,60),access={"premium"}},
@@ -222,7 +219,7 @@ local function getGuiParent()
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 local parent=getGuiParent()
-for _,name in ipairs({"_bs_root","_bs_key","_bs_wrong","_bs_ban","_bs_notif","_bs_reset_dialog","_bs_hud","_bs_season","_bs_tinfo","_bs_freeze","_bs_popups","_bs_loading","_bs_lock","_bs_unsup"}) do
+for _,name in ipairs({"_bs_root","_bs_key","_bs_wrong","_bs_ban","_bs_notif","_bs_reset_dialog","_bs_hud","_bs_season","_bs_tinfo","_bs_freeze","_bs_popups","_bs_loading","_bs_lock","_bs_unsup","_bs_banBanner"}) do
     local o=parent:FindFirstChild(name) if o then o:Destroy() end
 end
 
@@ -369,7 +366,7 @@ local function createLoadingScreen()
     return loader
 end
 
--- NOTIFICATIONS with dedup
+-- ============ NOTIFICATIONS ============
 local notifSg=Instance.new("ScreenGui")
 notifSg.Name="_bs_notif" notifSg.ResetOnSpawn=false notifSg.DisplayOrder=2147483646 notifSg.IgnoreGuiInset=true notifSg.ZIndexBehavior=Enum.ZIndexBehavior.Global notifSg.Parent=parent
 local notifHolder=Instance.new("Frame")
@@ -380,16 +377,12 @@ local notifCounter=0
 local notificationsEnabled=false
 local activeNotifs={}
 local notifiedCache={}
-local function notify(text,color)
-    if not notificationsEnabled then return end
-    local key=tostring(text)
-    local now=tick()
-    if notifiedCache[key] and now-notifiedCache[key]<5 then return end
-    notifiedCache[key]=now
+
+local function spawnNotifFrame(text,color,borderColor)
     notifCounter=notifCounter+1
     local n=Instance.new("Frame")
     n.Size=UDim2.new(1,0,0,40) n.BackgroundColor3=UI.panel2 n.BackgroundTransparency=0.05 n.BorderSizePixel=0 n.LayoutOrder=-notifCounter n.ZIndex=5001 n.Parent=notifHolder
-    addCorner(n,4) addStroke(n,UI.border,1)
+    addCorner(n,4) addStroke(n,borderColor or UI.border, borderColor and 1.5 or 1)
     local accentBar=Instance.new("Frame")
     accentBar.Size=UDim2.new(0,3,1,-10) accentBar.Position=UDim2.new(0,0,0,5) accentBar.BackgroundColor3=color or UI.accent accentBar.BorderSizePixel=0 accentBar.Parent=n addCorner(accentBar,2)
     local lbl=Instance.new("TextLabel")
@@ -406,7 +399,24 @@ local function notify(text,color)
     end)
 end
 
--- HUD
+local function notify(text,color)
+    if not notificationsEnabled then return end
+    local key=tostring(text)
+    local now=tick()
+    if notifiedCache[key] and now-notifiedCache[key]<5 then return end
+    notifiedCache[key]=now
+    spawnNotifFrame(text,color,color)
+end
+
+local function notifyForce(text,color)
+    local key=tostring(text)
+    local now=tick()
+    if notifiedCache[key] and now-notifiedCache[key]<3 then return end
+    notifiedCache[key]=now
+    spawnNotifFrame(text,color or UI.good,color or UI.good)
+end
+
+-- ============ HUD ============
 local hudEnabled=false
 local hudSg=Instance.new("ScreenGui")
 hudSg.Name="_bs_hud" hudSg.ResetOnSpawn=false hudSg.DisplayOrder=2147483635 hudSg.IgnoreGuiInset=true hudSg.ZIndexBehavior=Enum.ZIndexBehavior.Global hudSg.Parent=parent
@@ -440,7 +450,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 local function setHudVisible(v) hudEnabled=v hudMain.Visible=v end
 
--- TARGET INFO
+-- ============ TARGET INFO ============
 local tinfoSg=Instance.new("ScreenGui")
 tinfoSg.Name="_bs_tinfo" tinfoSg.ResetOnSpawn=false tinfoSg.DisplayOrder=2147483634 tinfoSg.IgnoreGuiInset=true tinfoSg.ZIndexBehavior=Enum.ZIndexBehavior.Global tinfoSg.Parent=parent
 local tinfoCard=Instance.new("Frame")
@@ -462,7 +472,7 @@ tinfoHpText.Size=UDim2.new(1,-74,0,12) tinfoHpText.Position=UDim2.new(0,68,0,38)
 local tinfoWeapon=Instance.new("TextLabel")
 tinfoWeapon.Size=UDim2.new(1,-74,0,14) tinfoWeapon.Position=UDim2.new(0,68,0,50) tinfoWeapon.BackgroundTransparency=1 tinfoWeapon.Text="Weapon: --" tinfoWeapon.TextColor3=UI.warn tinfoWeapon.TextSize=11 tinfoWeapon.Font=Enum.Font.GothamBold tinfoWeapon.TextXAlignment=Enum.TextXAlignment.Left tinfoWeapon.ZIndex=4501 tinfoWeapon.Parent=tinfoCard
 
--- POPUPS
+-- ============ POPUPS ============
 local popupSg=Instance.new("ScreenGui")
 popupSg.Name="_bs_popups" popupSg.ResetOnSpawn=false popupSg.DisplayOrder=2147483647 popupSg.IgnoreGuiInset=true popupSg.ZIndexBehavior=Enum.ZIndexBehavior.Global popupSg.Parent=parent
 local popupQueue={} local showingPopup=false local currentPopupFrame=nil local popupIdsToAck={}
@@ -527,7 +537,30 @@ local function enqueuePopup(item)
     if not showingPopup then task.spawn(function() showNextPopup() end) end
 end
 
--- LOCK OVERLAY
+-- ============ BAN BANNER (не скрывает меню) ============
+local banBanner=nil
+local function showBanBanner(type,reason,duration)
+    if banBanner and banBanner.Parent then banBanner:Destroy() end
+    banBanner=Instance.new("Frame")
+    banBanner.Name="_bs_banBanner" banBanner.Size=UDim2.new(1,0,0,44)
+    banBanner.Position=UDim2.new(0,0,0,0) banBanner.BackgroundColor3=UI.bg
+    banBanner.BorderSizePixel=0 banBanner.Parent=parent banBanner.ZIndex=2100
+    addCorner(banBanner,4)
+    local col=(type=="ban") and UI.bad or UI.freeze
+    addStroke(banBanner,col,2)
+    local lbl=Instance.new("TextLabel")
+    lbl.Size=UDim2.new(1,-20,1,0) lbl.Position=UDim2.new(0,10,0,0)
+    lbl.BackgroundTransparency=1 lbl.TextColor3=col lbl.TextSize=13
+    lbl.Font=Enum.Font.GothamBold lbl.TextXAlignment=Enum.TextXAlignment.Center
+    lbl.Text=(type=="ban") and "YOU ARE BANNED - features disabled, only Support and Feedback available" or "YOU ARE FROZEN - features disabled, only Support and Feedback available"
+    lbl.Parent=banBanner
+    TweenService:Create(banBanner,TweenInfo.new(0.3),{Position=UDim2.new(0,0,0,54)}):Play()
+end
+local function hideBanBanner()
+    if banBanner and banBanner.Parent then banBanner:Destroy() banBanner=nil end
+end
+
+-- ============ LOCK OVERLAY (для случая когда меню не открыто) ============
 local banOverlaySg=nil
 local function showLockOverlay(type,reason,duration)
     if banOverlaySg then banOverlaySg:Destroy() end
@@ -565,7 +598,7 @@ local function hideLockOverlay()
     if banOverlaySg then banOverlaySg:Destroy() banOverlaySg=nil end
 end
 
--- UNSUPPORTED FEATURE POPUP
+-- ============ UNSUPPORTED POPUP ============
 local function showUnsupportedPopup()
     local old=parent:FindFirstChild("_bs_unsup") if old then old:Destroy() end
     local sg=Instance.new("ScreenGui")
@@ -582,7 +615,7 @@ local function showUnsupportedPopup()
     t.TextXAlignment=Enum.TextXAlignment.Left; t.Parent=fr
     local b=Instance.new("TextLabel")
     b.Size=UDim2.new(1,-30,0,90); b.Position=UDim2.new(0,15,0,56)
-    b.BackgroundTransparency=1; b.Text="Your executor does not support the functions required for this feature.\n\nUse a different executor (Synapse, Delta, Codex, Hydrogen)."
+    b.BackgroundTransparency=1; b.Text="Your executor does not support the functions required for this feature.\n\nUse a different executor."
     b.TextColor3=UI.text; b.TextSize=13; b.Font=Enum.Font.Gotham
     b.TextXAlignment=Enum.TextXAlignment.Left; b.TextYAlignment=Enum.TextYAlignment.Top
     b.TextWrapped=true; b.Parent=fr
@@ -595,7 +628,7 @@ local function showUnsupportedPopup()
     task.delay(6,function() if sg.Parent then sg:Destroy() end end)
 end
 
--- KEY MENU
+-- ============ KEY MENU ============
 local keyPassed=false
 local keyMenuOpen=false
 local function showKeyMenu()
@@ -652,7 +685,7 @@ local function showKeyMenu()
     box.FocusLost:Connect(function(e) if e then tryActivate() end end)
 end
 
--- RESET DIALOG
+-- ============ RESET DIALOG ============
 local function showResetDialog(notice,callback)
     local n=notice
     if type(notice)=="string" then
@@ -672,7 +705,7 @@ local function showResetDialog(notice,callback)
     btn.MouseButton1Click:Connect(function() dialogSg:Destroy() if callback then callback() end end)
 end
 
--- MAIN GUI
+-- ============ MAIN GUI ============
 function runMainGUI()
 if not keyPassed then return end
 local S={unloaded=false,locked=false,lockType=nil,connections={},espEnabled=false,showTracer=true,showHP=true,showName=true,showDist=true,showChams=true,deadCleanup=false,showHitbar=true,skeletonEnabled=false,c4Enabled=false,c4Color=Color3.fromRGB(255,120,0),c4Timers={},espCache={},wallhackEnabled=false,mapSpawnedParts={},savedMapChildren={},wallhackState="idle",wallhackCountdownStart=0,xrayEnabled=false,xraySavedTransparency={},timeSliderValue=12,timeLockerEnabled=false,skyEnabled=false,skyObject=nil,skySaved=nil,seasonState=0,snowPlates={},rainSound=nil,fallLeavesEmitter=nil,rainEmitter=nil,snowEmitter=nil,winterHats={},fullbrightEnabled=false,fullbrightSaved=nil,noFogEnabled=false,noFogSaved=nil,noFogAtmSaved=nil,graphicEnabled=false,graphicObjects={},fpsBoostEnabled=false,fpsBoostSaved={decals={},particles={},beams={},atmosphere=nil,shadows=nil},cameraMode=1,camMetaHookInstalled=false,camOldNewIndex=nil,morphState=0,noRecoilEnabled=false,bunnyHopEnabled=false,speedEnabled=false,speedStep=3,speedThread=nil,headshotAssistEnabled=false,lastCamLook=nil,bigHeadEnabled=false,bigHeadTeamCheck=false,originalSizes={},noclipEnabled=false,aimEnabled=false,aimFov=200,aimPart="Head",aimWallCheck=true,aimTeamCheck=true,aimHolding=false,aimHoldKey=Enum.UserInputType.MouseButton2,wallbangEnabled=false,rawMeta=nil,oldNamecall=nil,launchEnabled=false,launchHeight=35,launchBasePos=nil,spinEnabled=false,spinSpeed=720,giantEnabled=false,giantScale=3,giantOriginal={},tallEnabled=false,tallScale=2,tallOriginal={},betaNoclip=false,betaFly=false,betaSpeedVal=50,targetPlayerName="",tinfoEnabled=false,tinfoLastUserId=nil,hudEnabled=false,accountStatus={state="loading",checked=false,lastPoll=nil,details=nil},feedbackCooldown=0,gtaEnabled=false,gtaObjects={},gtaSavedFog=nil,rainOn=false,rainEmitterObj=nil,rainAttachment=nil,premiumJump=false,savedJumpPower=nil,premiumAntiAfk=false,antiAfkThread=nil,premiumNightVision=false,savedAmbient=nil,savedOutdoor=nil,savedBright=nil,premiumNoFog=false,savedFogEnd=nil,savedFogStart=nil,premiumInfJump=false,infJumpConn=nil,premiumFullBright=false,pbSavedB=nil,pbSavedA=nil,pbSavedO=nil,supportSerial=nil,supportStatus=nil,supportLastMsgCount=0}
@@ -685,6 +718,7 @@ local function addConn(c) table.insert(S.connections,c) return c end
 local updateStatusCard=function() end
 local updateRankDisplay=function() end
 local updateFeedbackStatus=function() end
+local refreshSupport=function() end
 
 local sg=Instance.new("ScreenGui")
 sg.Name="_bs_root" sg.ResetOnSpawn=false sg.DisplayOrder=2147483640 sg.IgnoreGuiInset=true sg.ZIndexBehavior=Enum.ZIndexBehavior.Global sg.Parent=parent
@@ -719,7 +753,7 @@ accentLine.Size=UDim2.new(0,80,0,2) accentLine.Position=UDim2.new(0,16,1,-2) acc
 local title=Instance.new("TextLabel")
 title.Size=UDim2.new(0,110,1,0) title.Position=UDim2.new(0,18,0,0) title.BackgroundTransparency=1 title.Text="WorkClient" title.TextColor3=UI.text title.TextSize=15 title.Font=Enum.Font.GothamBold title.TextXAlignment=Enum.TextXAlignment.Left title.Parent=topbar title.ZIndex=1002
 local versionLbl=Instance.new("TextLabel")
-versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.8" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
+versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.9" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
 local nickLabel=Instance.new("TextLabel")
 nickLabel.Size=UDim2.new(0,300,1,0) nickLabel.Position=UDim2.new(0,190,0,0)
 nickLabel.BackgroundTransparency=1 nickLabel.Text="-- "..LocalPlayer.Name.." --"
@@ -762,7 +796,7 @@ local function createPage(name)
 end
 local function switchTab(name)
     if switchingTab then return end
-    if S.locked then return end
+    if name=="support" and not S.supportSerial then return end
     local newPage=pages[name] if not newPage then return end
     for n,b in pairs(tabButtons) do
         if n==name then b.TextColor3=UI.accent local s=b:FindFirstChildOfClass("UIStroke") if s then s.Color=UI.accent s.Thickness=1.5 end
@@ -973,15 +1007,14 @@ local function lockAllFeatures(type,reason,duration)
     pcall(function() if S.rainEmitterObj then S.rainEmitterObj:Destroy() S.rainEmitterObj=nil end end)
     pcall(function() if S.rainAttachment then S.rainAttachment:Destroy() S.rainAttachment=nil end end)
     pcall(function() for _,o in ipairs(S.gtaObjects or {}) do if o and o.Parent then o:Destroy() end end end)
-    showLockOverlay(type,reason,duration)
-    main.Visible=false
+    showBanBanner(type,reason,duration)
 end
 local function unlockAllFeatures()
     if not S.locked then return end
     S.locked=false S.lockType=nil
+    hideBanBanner()
     hideLockOverlay()
-    main.Visible=true
-    notify("Punishment lifted, features restored",UI.good)
+    notifyForce("Punishment lifted, features restored",UI.good)
 end
 
 local function applyAccountStatus(data)
@@ -1031,8 +1064,9 @@ local function startPollLoop()
                                 S.supportSerial=data.complaint.serial
                                 S.supportStatus=data.complaint.status
                                 S.supportLastMsgCount=0
+                                if tabButtons["support"] then tabButtons["support"].Visible=true end
                                 pcall(refreshSupport)
-                                notify("Support ticket: "..data.complaint.serial, UI.accent)
+                                notifyForce("Support ticket opened: "..data.complaint.serial, UI.accent)
                             end
                         end
                         if data.reconnect_pending then
@@ -1051,7 +1085,6 @@ local function startPollLoop()
     end)
 end
 
--- C4 WATCH
 local lastBombWeapon=nil
 local function findC4Bomb()
     local debris=workspace:FindFirstChild("Debris") if not debris then return nil,nil end
@@ -1073,7 +1106,6 @@ addConn(RunService.Heartbeat:Connect(function()
     elseif not w then lastBombWeapon=nil end
 end))
 
--- KILL FEED
 local charToPlayer={}
 local function indexChar(plr) if plr.Character then charToPlayer[plr.Character]=plr end end
 for _,plr in ipairs(Players:GetPlayers()) do if plr~=LocalPlayer then indexChar(plr) addConn(plr.CharacterAdded:Connect(function(c) charToPlayer[c]=plr end)) end end
@@ -1093,7 +1125,6 @@ local cfFolder=getCharsFolder()
 if cfFolder then setupKillFeed(cfFolder)
 else addConn(workspace.ChildAdded:Connect(function(c) if c.Name=="Characters" then setupKillFeed(c) end end)) end
 
--- WALLHACK helpers
 local function hasHumanoidInside(obj)
     if obj:IsA("Humanoid") then return true end
     if obj:FindFirstChildOfClass("Humanoid") then return true end
@@ -1812,12 +1843,11 @@ for i,m in ipairs(MORPHS) do
 end
 refreshMorphBtns()
 
--- SKIN CHANGER
 local scPage=createPage("skinchanger")
 local soonLabel=Instance.new("TextLabel")
 soonLabel.Size=UDim2.new(1,-20,0,80) soonLabel.Position=UDim2.new(0,10,0.4,-40) soonLabel.BackgroundTransparency=1 soonLabel.Text="COMING SOON" soonLabel.TextColor3=UI.yellow soonLabel.TextScaled=true soonLabel.Font=Enum.Font.GothamBold soonLabel.Parent=scPage soonLabel.ZIndex=1002
 
--- PREMIUM PAGE (only for premium access)
+-- PREMIUM
 local premiumPage=createPage("premium")
 makeSection(premiumPage,"Premium Features",10)
 makeButton(premiumPage,"Super Jump: OFF",0.02,42,0.46,nil,function(self)
@@ -1918,7 +1948,7 @@ makeSection(premiumPage,"Info",266)
 local premInfo=Instance.new("TextLabel")
 premInfo.Size=UDim2.new(0.96,0,0,80) premInfo.Position=UDim2.new(0.02,0,0,298)
 premInfo.BackgroundTransparency=1
-premInfo.Text="Premium unlocks at supporter / premium / beta / admin / owner.\n\nLOCK buttons = your executor doesn't support the required functions."
+premInfo.Text="Premium unlocks at supporter / premium / beta / admin / owner.\n\nLOCK buttons = executor doesn't support the required functions."
 premInfo.TextColor3=UI.textDim premInfo.TextSize=12 premInfo.Font=Enum.Font.Gotham
 premInfo.TextXAlignment=Enum.TextXAlignment.Left premInfo.TextYAlignment=Enum.TextYAlignment.Top
 premInfo.TextWrapped=true premInfo.Parent=premiumPage premInfo.ZIndex=1002
@@ -2122,7 +2152,6 @@ makeButton(adminPage,"Restore camera",0.02,122,0.96,nil,function()
     if h then workspace.CurrentCamera.CameraSubject=h end
 end)
 
--- ADMIN PANEL
 local adminPanelPage=createPage("adminpanel")
 makeSection(adminPanelPage,"Command Line",10)
 local cmdLog=Instance.new("ScrollingFrame")
@@ -2287,6 +2316,7 @@ makeButton(settingsPage,"Refresh from server",0.02,478,0.96,nil,function(self)
     if hasAccess("admin") then createTabButton("admin","Admin",UI.warn) end
     if hasAccess("adminpanel") then createTabButton("adminpanel","Admin Panel",UI.bad) end
     createTabButton("support","Support",UI.accent)
+    if tabButtons["support"] then tabButtons["support"].Visible=(S.supportSerial~=nil) end
     createTabButton("configs","Configs",UI.good)
     createTabButton("feedback","Feedback",UI.accent)
     createTabButton("settings","Settings",UI.accent)
@@ -2294,7 +2324,7 @@ makeButton(settingsPage,"Refresh from server",0.02,478,0.96,nil,function(self)
     self.Text="Done" task.wait(1.2) self.Text="Refresh from server"
 end)
 
--- SUPPORT PAGE
+-- SUPPORT
 local supportPage=createPage("support")
 makeSection(supportPage,"Support Ticket",10)
 local supportIntro=Instance.new("TextLabel")
@@ -2353,7 +2383,7 @@ local function renderSupportLog(messages)
     end
 end
 
-local function refreshSupport()
+refreshSupport=function()
     if not S.supportSerial then
         supportIntro.Text="No active ticket."
         supportStatusLbl.Text=""
@@ -2365,7 +2395,7 @@ local function refreshSupport()
         local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
         if not ok or type(data)~="table" or data.status~="ok" then return end
         S.supportStatus=data.complaint.status
-        supportStatusLbl.Text="Ticket "..S.supportSerial.." · Status: "..string.upper(S.supportStatus)
+        supportStatusLbl.Text="Ticket "..S.supportSerial.." - Status: "..string.upper(S.supportStatus)
         if S.supportStatus=="closed" or S.supportStatus=="refused" then
             supportStatusLbl.TextColor3=UI.bad
         elseif S.supportStatus=="resolved" then
@@ -2374,8 +2404,15 @@ local function refreshSupport()
             supportStatusLbl.TextColor3=UI.warn
         end
         if #data.messages ~= S.supportLastMsgCount then
+            local prevCount=S.supportLastMsgCount
             S.supportLastMsgCount=#data.messages
             renderSupportLog(data.messages)
+            if prevCount>0 and #data.messages>prevCount then
+                local last=data.messages[#data.messages]
+                if last.sender_type=="moderator" then
+                    notifyForce("Support: "..tostring(last.text),UI.good)
+                end
+            end
         end
         if S.supportStatus=="closed" or S.supportStatus=="refused" or S.supportStatus=="resolved" then
             supportInput.Text=""
@@ -2390,6 +2427,8 @@ local function refreshSupport()
                 for _,ch in ipairs(supportLog:GetChildren()) do
                     if ch:IsA("TextLabel") then ch:Destroy() end
                 end
+                if tabButtons["support"] then tabButtons["support"].Visible=false end
+                if pages["support"] and pages["support"].Visible then switchTab("main") end
             end)
         else
             supportInput.PlaceholderText="Message..."
@@ -2400,7 +2439,7 @@ end
 
 supportSendBtn.MouseButton1Click:Connect(function()
     if not S.supportSerial then return end
-    if S.supportStatus and S.supportStatus~="waiting" then return end
+    if S.supportStatus and (S.supportStatus=="closed" or S.supportStatus=="refused" or S.supportStatus=="resolved") then return end
     local txt=supportInput.Text:gsub("^%s+",""):gsub("%s+$","")
     if txt=="" then return end
     supportInput.Text=""
@@ -3032,7 +3071,6 @@ miniBtn.InputChanged:Connect(function(input)
 end)
 miniBtn.MouseButton1Click:Connect(function()
     if miniMoved then return end
-    if S.locked then return end
     main.Visible=true
     if hasCanvas then
         main.GroupTransparency=1
@@ -3081,6 +3119,7 @@ closeBtn.MouseButton1Click:Connect(function()
     pcall(function() disableRain() end)
     pcall(function() if S.infJumpConn then S.infJumpConn:Disconnect() end end)
     pcall(function() hideLockOverlay() end)
+    pcall(function() hideBanBanner() end)
     pcall(function() LocalPlayer.CameraMode=Enum.CameraMode.Classic LocalPlayer.CameraMinZoomDistance=0.5 LocalPlayer.CameraMaxZoomDistance=128 end)
     S.wallhackEnabled=false S.xrayEnabled=false S.timeLockerEnabled=false
     S.speedEnabled=false S.noRecoilEnabled=false S.bunnyHopEnabled=false S.headshotAssistEnabled=false
@@ -3092,7 +3131,6 @@ closeBtn.MouseButton1Click:Connect(function()
     pcall(function() popupSg:Destroy() end)
 end)
 
--- TABS
 createTabButton("main","Main",UI.text)
 createTabButton("visuals","Visuals",UI.accent)
 createTabButton("skinchanger","Skin Changer",UI.yellow)
@@ -3101,6 +3139,7 @@ if hasAccess("beta") then createTabButton("beta","Beta",Color3.fromRGB(200,140,2
 if hasAccess("admin") then createTabButton("admin","Admin",UI.warn) end
 if hasAccess("adminpanel") then createTabButton("adminpanel","Admin Panel",UI.bad) end
 createTabButton("support","Support",UI.accent)
+if tabButtons["support"] then tabButtons["support"].Visible=(S.supportSerial~=nil) end
 createTabButton("configs","Configs",UI.good)
 createTabButton("feedback","Feedback",UI.accent)
 createTabButton("settings","Settings",UI.accent)
@@ -3112,72 +3151,52 @@ end -- end runMainGUI
 local function startFlow()
     local loader=createLoadingScreen()
 
-    -- Step 1: Load script
     loader.step("Loading script",1.2)
     if not Players or not RunService or not HttpService or not UserInputService then
         loader.fail("Critical modules missing")
-        task.wait(2); loader.close()
-        return
+        task.wait(2); loader.close(); return
     end
     loader.ok()
 
-    -- Step 2: Detect executor (separate step)
     loader.step("Detecting executor",1.5)
-    if not executorName then
-        loader.info("Unknown executor",UI.warn)
-    else
-        loader.info(executorName,UI.yellow)
-    end
+    if not executorName then loader.info("Unknown executor",UI.warn)
+    else loader.info(executorName,UI.yellow) end
 
-    -- Step 3: Test executor capabilities
     loader.step("Testing executor capabilities",1.5)
     local ok_count,total=runExecTest()
     local color=UI.good
-    if ok_count<15 then color=UI.bad
-    elseif ok_count<30 then color=UI.warn end
+    if ok_count<15 then color=UI.bad elseif ok_count<30 then color=UI.warn end
     loader.info(ok_count.." / "..total.." passed",color)
     if ok_count<5 then
         loader.fail("Executor not supported")
-        task.wait(2); loader.close()
-        return
+        task.wait(2); loader.close(); return
     end
 
-    -- Step 4: Connect API
     loader.step("Connecting API",1.0)
     local hasHttp=false
-    if syn and syn.request then hasHttp=true
-    elseif request then hasHttp=true
-    elseif http and http.request then hasHttp=true end
+    if syn and syn.request then hasHttp=true elseif request then hasHttp=true elseif http and http.request then hasHttp=true end
     if not hasHttp then
         loader.fail("No HTTP library available")
-        task.wait(2); loader.close()
-        return
+        task.wait(2); loader.close(); return
     end
     loader.ok()
 
-    -- Step 5: Test server connection
     loader.step("Testing server connection",0.5)
-    local resPing=nil
-    local pingDone=false
-    task.spawn(function()
-        resPing=httpPost(API_URL.."/",{})
-        pingDone=true
-    end)
+    local resPing=nil local pingDone=false
+    task.spawn(function() resPing=httpPost(API_URL.."/",{}) pingDone=true end)
     local t0=tick()
     while not pingDone and tick()-t0<8 do task.wait(0.1) end
     if not pingDone or not resPing then
         loader.fail("Server not responding (timeout)")
-        task.wait(2); loader.close()
-        return
+        task.wait(2); loader.close(); return
     end
     loader.ok("server: ok")
 
-    -- Step 6: Check key
     loader.step("Checking active key",0.5)
     local hasKeyLocal=localData.key and localData.key~=""
     local data=nil
     if not hasKeyLocal then
-        local resKey=nil; local keyDone=false
+        local resKey=nil local keyDone=false
         task.spawn(function()
             resKey=httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId})
             keyDone=true
@@ -3186,9 +3205,7 @@ local function startFlow()
         while not keyDone and tick()-t1<8 do task.wait(0.1) end
         if not keyDone or not resKey then
             loader.fail("Server timeout on key check")
-            task.wait(2); loader.close()
-            showKeyMenu()
-            return
+            task.wait(2); loader.close(); showKeyMenu(); return
         end
         local ok,d=pcall(function() return HttpService:JSONDecode(resKey) end)
         if ok and type(d)=="table" then data=d end
@@ -3197,8 +3214,7 @@ local function startFlow()
             showResetDialog(data.reset_notice,function()
                 pcall(function() httpPost(API_URL.."/clear_notice",{secret=API_SECRET,hwid=currentHWID}) end)
                 localData.key=nil localData.rank=nil localData.activated=nil
-                saveLocal(localData)
-                showKeyMenu()
+                saveLocal(localData); showKeyMenu()
             end)
             return
         end
@@ -3211,9 +3227,7 @@ local function startFlow()
             loader.ok("key activated")
         else
             loader.fail("No active key")
-            task.wait(1.5); loader.close()
-            showKeyMenu()
-            return
+            task.wait(1.5); loader.close(); showKeyMenu(); return
         end
     else
         currentKey=localData.key
@@ -3221,7 +3235,6 @@ local function startFlow()
         loader.ok("key cached")
     end
 
-    -- Step 7: Check account status
     loader.step("Checking account status",0.5)
     local statusText="All good"
     local statusColor=UI.good
