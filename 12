@@ -1,4 +1,4 @@
--- WorkClient | Blox Strike | v30.7 | by WorkSaturn17940
+-- WorkClient | Blox Strike | v30.8 | by WorkSaturn17940
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -7,6 +7,7 @@ local TweenService=game:GetService("TweenService")
 local Stats=game:GetService("Stats")
 local Lighting=game:GetService("Lighting")
 local SoundService=game:GetService("SoundService")
+local VirtualUser=game:GetService("VirtualUser")
 local LocalPlayer=Players.LocalPlayer
 local API_URL="https://bs-api.mihailkoshkin70.workers.dev"
 local API_SECRET="bloxstrike_secret_2026_kotost_verylong777"
@@ -53,8 +54,69 @@ local function detectExecutorName()
 end
 executorName=detectExecutorName()
 
+-- Executor capability test (sUNC-like)
+local executorSupport={}
+local function runExecTest()
+    local checks={
+        "getrawmetatable","setreadonly","getnamecallmethod","hookfunction","hookmetamethod",
+        "getconnections","firesignal","fireclickdetector","firetouchinterest","fireproximityprompt",
+        "isnetworkowner","getgc","getinstances","getnilinstances","getloadedmodules","getreg",
+        "getupvalues","getconstants","getprotos","getstack","setupvalue","setconstant",
+        "getscriptclosure","getcallingscript","checkcaller","islclosure","iscclosure",
+        "identifyexecutor","getexecutorname","request","getgenv","getrenv","gethui",
+        "cloneref","compareinstances","setclipboard","writefile","readfile","isfile",
+        "makefolder","isfolder","delfile","listfiles","appendfile","loadstring","getcustomasset",
+    }
+    local ok_count=0
+    for _,name in ipairs(checks) do
+        local fn=nil
+        if _G[name]~=nil then fn=_G[name]
+        elseif getgenv then
+            local g=getgenv()
+            if g and g[name] then fn=g[name] end
+        end
+        if fn~=nil then ok_count=ok_count+1 executorSupport[name]=true else executorSupport[name]=false end
+    end
+    return ok_count,#checks
+end
+
+local function canRunFeature(feature)
+    local req={
+        wallbang={"getrawmetatable","setreadonly","getnamecallmethod"},
+        headshot={"getrawmetatable","setnamecallmethod","setreadonly"},
+        esp={"cloneref"},
+        c4esp={"cloneref"},
+        filesystem={"writefile","readfile","isfile"},
+        folders={"makefolder","isfolder"},
+        listfiles={"listfiles"},
+        delfile={"delfile"},
+        clipboard={"setclipboard"},
+        morph={"getgenv"},
+        camera={"getrawmetatable","setreadonly"},
+        gethui={"gethui"},
+    }
+    local r=req[feature]
+    if not r then return true end
+    for _,fname in ipairs(r) do
+        if not executorSupport[fname] then return false end
+    end
+    return true
+end
+
+-- UI Palette
 local UI={bg=Color3.fromRGB(13,13,17),topbar=Color3.fromRGB(20,20,26),panel=Color3.fromRGB(17,17,22),panel2=Color3.fromRGB(24,24,30),panel3=Color3.fromRGB(30,30,38),border=Color3.fromRGB(42,42,52),borderHi=Color3.fromRGB(72,72,88),accent=Color3.fromRGB(80,190,255),text=Color3.fromRGB(230,232,240),textDim=Color3.fromRGB(140,144,158),textMute=Color3.fromRGB(100,104,118),good=Color3.fromRGB(70,210,130),bad=Color3.fromRGB(235,85,85),warn=Color3.fromRGB(235,190,80),yellow=Color3.fromRGB(255,220,60),freeze=Color3.fromRGB(140,200,255),input=Color3.fromRGB(22,22,28)}
-local RANKS={player={level=0,color=Color3.fromRGB(180,180,190),access={}},beta={level=1,color=Color3.fromRGB(200,140,255),access={"beta"}},helper={level=2,color=Color3.fromRGB(255,215,0),access={"admin"}},moderator={level=3,color=Color3.fromRGB(80,160,255),access={"admin"}},admin={level=4,color=Color3.fromRGB(255,80,80),access={"beta","admin","adminpanel"}},owner={level=5,color=Color3.fromRGB(255,40,40),access={"beta","admin","adminpanel"}}}
+
+-- RANKS with new supporter & premium
+local RANKS={
+    player={level=0,color=Color3.fromRGB(180,180,190),access={}},
+    supporter={level=1,color=Color3.fromRGB(255,220,60),access={"premium"}},
+    premium={level=2,color=Color3.fromRGB(255,220,60),access={"premium"}},
+    beta={level=3,color=Color3.fromRGB(200,140,255),access={"beta","premium"}},
+    helper={level=4,color=Color3.fromRGB(255,215,0),access={"admin","premium"}},
+    moderator={level=5,color=Color3.fromRGB(80,160,255),access={"admin","premium"}},
+    admin={level=6,color=Color3.fromRGB(255,80,80),access={"beta","admin","adminpanel","premium"}},
+    owner={level=7,color=Color3.fromRGB(255,40,40),access={"beta","admin","adminpanel","premium"}},
+}
 local HEAD_SIZE=15
 local HP_HIGH=Color3.fromRGB(0,220,100)
 local HP_MID=Color3.fromRGB(240,200,60)
@@ -153,17 +215,14 @@ local function getGuiParent()
     if ok and cg then
         local canWrite=false
         pcall(function()
-            local t=Instance.new("Folder")
-            t.Parent=cg
-            t:Destroy()
-            canWrite=true
+            local t=Instance.new("Folder"); t.Parent=cg; t:Destroy(); canWrite=true
         end)
         if canWrite then return cg end
     end
     return LocalPlayer:WaitForChild("PlayerGui")
 end
 local parent=getGuiParent()
-for _,name in ipairs({"_bs_root","_bs_key","_bs_wrong","_bs_ban","_bs_notif","_bs_reset_dialog","_bs_hud","_bs_season","_bs_tinfo","_bs_freeze","_bs_popups","_bs_loading","_bs_lock"}) do
+for _,name in ipairs({"_bs_root","_bs_key","_bs_wrong","_bs_ban","_bs_notif","_bs_reset_dialog","_bs_hud","_bs_season","_bs_tinfo","_bs_freeze","_bs_popups","_bs_loading","_bs_lock","_bs_unsup"}) do
     local o=parent:FindFirstChild(name) if o then o:Destroy() end
 end
 
@@ -215,7 +274,7 @@ local function findHeadPart(char)
     return nil
 end
 
--- LOADING SCREEN
+-- ============ LOADING SCREEN ============
 local function createLoadingScreen()
     local sg=Instance.new("ScreenGui")
     sg.Name="_bs_loading" sg.ResetOnSpawn=false sg.DisplayOrder=2147483647
@@ -234,124 +293,83 @@ local function createLoadingScreen()
     circle.BorderSizePixel=0 circle.Parent=center
     addCorner(circle,circleSize/2)
     local circleStroke=addStroke(circle,Color3.fromRGB(60,60,72),3)
-    local spinnerContainer=Instance.new("Frame")
-    spinnerContainer.Size=UDim2.new(1,0,1,0) spinnerContainer.BackgroundTransparency=1
-    spinnerContainer.Parent=circle
-    local segments={}
+    local spinner=Instance.new("Frame")
+    spinner.Size=UDim2.new(1,0,1,0) spinner.BackgroundTransparency=1 spinner.Parent=circle
+    local segs={}
     for i=1,12 do
-        local angle=(i-1)/12*math.pi*2
-        local radius=circleSize/2-13
-        local x=circleSize/2+math.cos(angle)*radius
-        local y=circleSize/2+math.sin(angle)*radius
+        local a=(i-1)/12*math.pi*2; local r=circleSize/2-13
+        local x=circleSize/2+math.cos(a)*r; local y=circleSize/2+math.sin(a)*r
         local seg=Instance.new("Frame")
-        seg.Size=UDim2.new(0,9,0,9)
-        seg.Position=UDim2.new(0,x-4.5,0,y-4.5)
-        seg.BackgroundColor3=UI.yellow
-        seg.BorderSizePixel=0
+        seg.Size=UDim2.new(0,9,0,9); seg.Position=UDim2.new(0,x-4.5,0,y-4.5)
+        seg.BackgroundColor3=UI.yellow; seg.BorderSizePixel=0
         seg.BackgroundTransparency=1-((i-1)/12)*0.85-0.1
-        seg.Parent=spinnerContainer
-        addCorner(seg,4.5)
-        table.insert(segments,seg)
+        seg.Parent=spinner; addCorner(seg,4.5); table.insert(segs,seg)
     end
     local check=Instance.new("TextLabel")
     check.Size=UDim2.new(1,0,1,0) check.BackgroundTransparency=1
     check.Text="OK" check.TextColor3=UI.yellow check.TextSize=52
-    check.Font=Enum.Font.GothamBold check.TextTransparency=1
-    check.Parent=circle
+    check.Font=Enum.Font.GothamBold check.TextTransparency=1 check.Parent=circle
     local stepText=Instance.new("TextLabel")
-    stepText.Size=UDim2.new(1,0,0,26)
-    stepText.Position=UDim2.new(0,0,0,circleSize+18)
-    stepText.BackgroundTransparency=1 stepText.Text=""
-    stepText.TextColor3=UI.text stepText.TextSize=15
-    stepText.Font=Enum.Font.GothamBold stepText.TextTransparency=1
+    stepText.Size=UDim2.new(1,0,0,26); stepText.Position=UDim2.new(0,0,0,circleSize+18)
+    stepText.BackgroundTransparency=1 stepText.Text=""; stepText.TextColor3=UI.text
+    stepText.TextSize=15; stepText.Font=Enum.Font.GothamBold stepText.TextTransparency=1
     stepText.Parent=center
     local subText=Instance.new("TextLabel")
-    subText.Size=UDim2.new(1,0,0,20)
-    subText.Position=UDim2.new(0,0,0,circleSize+48)
-    subText.BackgroundTransparency=1 subText.Text=""
-    subText.TextColor3=UI.textDim subText.TextSize=13
-    subText.Font=Enum.Font.Gotham subText.TextTransparency=1
+    subText.Size=UDim2.new(1,0,0,20); subText.Position=UDim2.new(0,0,0,circleSize+48)
+    subText.BackgroundTransparency=1 subText.Text=""; subText.TextColor3=UI.textDim
+    subText.TextSize=13; subText.Font=Enum.Font.Gotham subText.TextTransparency=1
     subText.Parent=center
-    local rotation=0 local spinning=true
+    local rot=0 local spin=true
     local conn=RunService.RenderStepped:Connect(function(dt)
-        if not spinning then return end
-        rotation=(rotation+dt*260)%360
-        spinnerContainer.Rotation=rotation
+        if not spin then return end
+        rot=(rot+dt*260)%360; spinner.Rotation=rot
     end)
-    local function fadeInT(obj,dur) TweenService:Create(obj,TweenInfo.new(dur or 0.3),{TextTransparency=0}):Play() end
-    local function fadeOutT(obj,dur) TweenService:Create(obj,TweenInfo.new(dur or 0.3),{TextTransparency=1}):Play() end
+    local function fIn(o,d) TweenService:Create(o,TweenInfo.new(d or 0.3),{TextTransparency=0}):Play() end
+    local function fOut(o,d) TweenService:Create(o,TweenInfo.new(d or 0.3),{TextTransparency=1}):Play() end
     local loader={}
     function loader.step(text,duration)
-        spinning=true
-        check.TextTransparency=1
-        spinnerContainer.Visible=true
-        spinnerContainer.Rotation=0
-        subText.TextTransparency=1
-        stepText.Text=text
-        stepText.TextTransparency=1
-        fadeInT(stepText,0.3)
-        task.wait(duration or 2)
+        spin=true check.TextTransparency=1 spinner.Visible=true spinner.Rotation=0
+        subText.TextTransparency=1 stepText.Text=text stepText.TextTransparency=1
+        fIn(stepText,0.3)
+        task.wait(duration or 1.5)
     end
-    function loader.success(text)
-        text=text or "success"
-        spinning=false
-        spinnerContainer.Visible=false
-        check.Text="OK" check.TextColor3=UI.yellow check.TextTransparency=1
-        fadeInT(check,0.3)
-        subText.Text=text subText.TextColor3=UI.good subText.TextTransparency=1
-        fadeInT(subText,0.3)
-        task.wait(1.2)
-        fadeOutT(check,0.25) fadeOutT(subText,0.25) fadeOutT(stepText,0.25)
-        task.wait(0.3)
-    end
-    function loader.executor(text)
-        text=text or "Unknown"
-        spinning=false
-        spinnerContainer.Visible=false
-        check.Text="OK" check.TextColor3=UI.yellow check.TextTransparency=1
-        fadeInT(check,0.3)
-        subText.Text=text subText.TextColor3=UI.yellow subText.TextTransparency=1
-        fadeInT(subText,0.3)
-        task.wait(1.2)
-        fadeOutT(check,0.25) fadeOutT(subText,0.25) fadeOutT(stepText,0.25)
-        task.wait(0.3)
+    function loader.ok(text)
+        text=text or "OK"
+        spin=false spinner.Visible=false
+        check.Text="OK" check.TextColor3=UI.yellow check.TextTransparency=1 fIn(check,0.3)
+        subText.Text=text subText.TextColor3=UI.good subText.TextTransparency=1 fIn(subText,0.3)
+        task.wait(1.0)
+        fOut(check,0.25) fOut(subText,0.25) fOut(stepText,0.25)
+        task.wait(0.25)
     end
     function loader.fail(text)
-        text=text or "error"
-        spinning=false
-        spinnerContainer.Visible=false
-        check.Text="X" check.TextColor3=UI.bad check.TextTransparency=1
-        fadeInT(check,0.3)
-        subText.Text=text subText.TextColor3=UI.bad subText.TextTransparency=1
-        fadeInT(subText,0.3)
-        task.wait(1.2)
+        text=text or "FAIL"
+        spin=false spinner.Visible=false
+        check.Text="X" check.TextColor3=UI.bad check.TextTransparency=1 fIn(check,0.3)
+        subText.Text=text subText.TextColor3=UI.bad subText.TextTransparency=1 fIn(subText,0.3)
+        task.wait(2.5)
     end
-    function loader.status(text,color)
-        spinning=false
-        spinnerContainer.Visible=false
-        check.Text="OK" check.TextColor3=color or UI.good check.TextTransparency=1
-        fadeInT(check,0.3)
-        subText.Text=text subText.TextColor3=color or UI.good subText.TextTransparency=1
-        fadeInT(subText,0.3)
-        task.wait(1.5)
+    function loader.info(text,color)
+        spin=false spinner.Visible=false
+        check.Text="OK" check.TextColor3=color or UI.yellow check.TextTransparency=1 fIn(check,0.3)
+        subText.Text=text subText.TextColor3=color or UI.yellow subText.TextTransparency=1 fIn(subText,0.3)
+        task.wait(1.4)
+        fOut(check,0.25) fOut(subText,0.25) fOut(stepText,0.25)
+        task.wait(0.25)
     end
     function loader.close()
-        spinning=false
-        if conn then conn:Disconnect() end
+        spin=false if conn then conn:Disconnect() end
         TweenService:Create(dim,TweenInfo.new(0.3),{BackgroundTransparency=1}):Play()
         TweenService:Create(circle,TweenInfo.new(0.3),{BackgroundTransparency=1}):Play()
         if circleStroke then TweenService:Create(circleStroke,TweenInfo.new(0.3),{Transparency=1}):Play() end
-        for _,seg in ipairs(segments) do
-            TweenService:Create(seg,TweenInfo.new(0.3),{BackgroundTransparency=1}):Play()
-        end
-        fadeOutT(check,0.3) fadeOutT(stepText,0.3) fadeOutT(subText,0.3)
-        task.wait(0.4)
-        sg:Destroy()
+        for _,s in ipairs(segs) do TweenService:Create(s,TweenInfo.new(0.3),{BackgroundTransparency=1}):Play() end
+        fOut(check,0.3) fOut(stepText,0.3) fOut(subText,0.3)
+        task.wait(0.4); sg:Destroy()
     end
     return loader
 end
 
--- NOTIFICATIONS
+-- NOTIFICATIONS with dedup
 local notifSg=Instance.new("ScreenGui")
 notifSg.Name="_bs_notif" notifSg.ResetOnSpawn=false notifSg.DisplayOrder=2147483646 notifSg.IgnoreGuiInset=true notifSg.ZIndexBehavior=Enum.ZIndexBehavior.Global notifSg.Parent=parent
 local notifHolder=Instance.new("Frame")
@@ -361,8 +379,13 @@ notifLayout.Padding=UDim.new(0,6) notifLayout.SortOrder=Enum.SortOrder.LayoutOrd
 local notifCounter=0
 local notificationsEnabled=false
 local activeNotifs={}
+local notifiedCache={}
 local function notify(text,color)
     if not notificationsEnabled then return end
+    local key=tostring(text)
+    local now=tick()
+    if notifiedCache[key] and now-notifiedCache[key]<5 then return end
+    notifiedCache[key]=now
     notifCounter=notifCounter+1
     local n=Instance.new("Frame")
     n.Size=UDim2.new(1,0,0,40) n.BackgroundColor3=UI.panel2 n.BackgroundTransparency=0.05 n.BorderSizePixel=0 n.LayoutOrder=-notifCounter n.ZIndex=5001 n.Parent=notifHolder
@@ -443,6 +466,7 @@ tinfoWeapon.Size=UDim2.new(1,-74,0,14) tinfoWeapon.Position=UDim2.new(0,68,0,50)
 local popupSg=Instance.new("ScreenGui")
 popupSg.Name="_bs_popups" popupSg.ResetOnSpawn=false popupSg.DisplayOrder=2147483647 popupSg.IgnoreGuiInset=true popupSg.ZIndexBehavior=Enum.ZIndexBehavior.Global popupSg.Parent=parent
 local popupQueue={} local showingPopup=false local currentPopupFrame=nil local popupIdsToAck={}
+local shownPopupIds={}
 local function ackPopups()
     if #popupIdsToAck==0 then return end
     local ids=popupIdsToAck popupIdsToAck={}
@@ -496,6 +520,8 @@ function showNextPopup()
     currentPopupFrame=main
 end
 local function enqueuePopup(item)
+    if item.id and shownPopupIds[item.id] then return end
+    if item.id then shownPopupIds[item.id]=true end
     table.insert(popupQueue,item)
     if item.id then table.insert(popupIdsToAck,item.id) end
     if not showingPopup then task.spawn(function() showNextPopup() end) end
@@ -539,7 +565,37 @@ local function hideLockOverlay()
     if banOverlaySg then banOverlaySg:Destroy() banOverlaySg=nil end
 end
 
--- KEY MENU (with guard against duplicate)
+-- UNSUPPORTED FEATURE POPUP
+local function showUnsupportedPopup()
+    local old=parent:FindFirstChild("_bs_unsup") if old then old:Destroy() end
+    local sg=Instance.new("ScreenGui")
+    sg.Name="_bs_unsup" sg.ResetOnSpawn=false sg.DisplayOrder=2147483647
+    sg.IgnoreGuiInset=true sg.Parent=parent
+    local fr=Instance.new("Frame")
+    fr.Size=UDim2.new(0,420,0,180); fr.Position=UDim2.new(0.5,-210,0.5,-90)
+    fr.BackgroundColor3=UI.bg; fr.BorderSizePixel=0; fr.Parent=sg
+    addCorner(fr,8); addStroke(fr,UI.bad,2)
+    local t=Instance.new("TextLabel")
+    t.Size=UDim2.new(1,-30,0,30); t.Position=UDim2.new(0,15,0,16)
+    t.BackgroundTransparency=1; t.Text="Executor Not Supported"
+    t.TextColor3=UI.bad; t.TextSize=18; t.Font=Enum.Font.GothamBold
+    t.TextXAlignment=Enum.TextXAlignment.Left; t.Parent=fr
+    local b=Instance.new("TextLabel")
+    b.Size=UDim2.new(1,-30,0,90); b.Position=UDim2.new(0,15,0,56)
+    b.BackgroundTransparency=1; b.Text="Your executor does not support the functions required for this feature.\n\nUse a different executor (Synapse, Delta, Codex, Hydrogen)."
+    b.TextColor3=UI.text; b.TextSize=13; b.Font=Enum.Font.Gotham
+    b.TextXAlignment=Enum.TextXAlignment.Left; b.TextYAlignment=Enum.TextYAlignment.Top
+    b.TextWrapped=true; b.Parent=fr
+    local ok=Instance.new("TextButton")
+    ok.Size=UDim2.new(1,-30,0,34); ok.Position=UDim2.new(0,15,1,-46)
+    ok.BackgroundColor3=UI.panel2; ok.BorderSizePixel=0; ok.Text="OK"
+    ok.TextColor3=UI.accent; ok.TextSize=13; ok.Font=Enum.Font.GothamBold
+    ok.Parent=fr; addCorner(ok,4); addStroke(ok,UI.accent,1.5)
+    ok.MouseButton1Click:Connect(function() sg:Destroy() end)
+    task.delay(6,function() if sg.Parent then sg:Destroy() end end)
+end
+
+-- KEY MENU
 local keyPassed=false
 local keyMenuOpen=false
 local function showKeyMenu()
@@ -569,15 +625,9 @@ local function showKeyMenu()
             local res=httpPost(API_URL.."/activate",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,key=input})
             activating=false
             btn.Text="ACTIVATE"
-            if not res then
-                status.Text="Network error" status.TextColor3=UI.bad
-                return
-            end
+            if not res then status.Text="Network error" status.TextColor3=UI.bad return end
             local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
-            if not ok or type(data)~="table" then
-                status.Text="Bad response" status.TextColor3=UI.bad
-                return
-            end
+            if not ok or type(data)~="table" then status.Text="Bad response" status.TextColor3=UI.bad return end
             if data.status=="ok" then
                 currentRank=data.rank or "player" currentKey=input
                 localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
@@ -585,27 +635,17 @@ local function showKeyMenu()
                 task.wait(1)
                 keyMenuOpen=false
                 pcall(function() keySg:Destroy() end)
-                if not keyPassed then
-                    keyPassed=true
-                    runMainGUI()
-                end
+                if not keyPassed then keyPassed=true runMainGUI() end
             elseif data.status=="already" then
                 currentKey=input localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
                 status.Text="Key restored" status.TextColor3=UI.good
                 task.wait(1)
                 keyMenuOpen=false
                 pcall(function() keySg:Destroy() end)
-                if not keyPassed then
-                    keyPassed=true
-                    runMainGUI()
-                end
-            elseif data.status=="limit" then
-                status.Text="Activation limit reached" status.TextColor3=UI.warn
-            elseif data.status=="invalid" then
-                status.Text="Invalid key" status.TextColor3=UI.bad
-            else
-                status.Text=tostring(data.status) status.TextColor3=UI.bad
-            end
+                if not keyPassed then keyPassed=true runMainGUI() end
+            elseif data.status=="limit" then status.Text="Activation limit reached" status.TextColor3=UI.warn
+            elseif data.status=="invalid" then status.Text="Invalid key" status.TextColor3=UI.bad
+            else status.Text=tostring(data.status) status.TextColor3=UI.bad end
         end)
     end
     btn.MouseButton1Click:Connect(tryActivate)
@@ -635,10 +675,10 @@ end
 -- MAIN GUI
 function runMainGUI()
 if not keyPassed then return end
-local S={unloaded=false,locked=false,lockType=nil,connections={},espEnabled=false,showTracer=true,showHP=true,showName=true,showDist=true,showChams=true,deadCleanup=false,showHitbar=true,skeletonEnabled=false,c4Enabled=false,c4Color=Color3.fromRGB(255,120,0),c4Timers={},espCache={},wallhackEnabled=false,mapSpawnedParts={},savedMapChildren={},wallhackState="idle",wallhackCountdownStart=0,xrayEnabled=false,xraySavedTransparency={},timeSliderValue=12,timeLockerEnabled=false,skyEnabled=false,skyObject=nil,skySaved=nil,seasonState=0,snowPlates={},rainSound=nil,fallLeavesEmitter=nil,rainEmitter=nil,snowEmitter=nil,winterHats={},fullbrightEnabled=false,fullbrightSaved=nil,noFogEnabled=false,noFogSaved=nil,noFogAtmSaved=nil,graphicEnabled=false,graphicObjects={},fpsBoostEnabled=false,fpsBoostSaved={decals={},particles={},beams={},atmosphere=nil,shadows=nil},cameraMode=1,camMetaHookInstalled=false,camOldNewIndex=nil,morphState=0,noRecoilEnabled=false,bunnyHopEnabled=false,speedEnabled=false,speedStep=3,speedThread=nil,headshotAssistEnabled=false,lastCamLook=nil,bigHeadEnabled=false,bigHeadTeamCheck=false,originalSizes={},noclipEnabled=false,aimEnabled=false,aimFov=200,aimPart="Head",aimWallCheck=true,aimTeamCheck=true,aimHolding=false,aimHoldKey=Enum.UserInputType.MouseButton2,wallbangEnabled=false,rawMeta=nil,oldNamecall=nil,launchEnabled=false,launchHeight=35,launchBasePos=nil,spinEnabled=false,spinSpeed=720,giantEnabled=false,giantScale=3,giantOriginal={},tallEnabled=false,tallScale=2,tallOriginal={},betaNoclip=false,betaFly=false,betaSpeedVal=50,targetPlayerName="",tinfoEnabled=false,tinfoLastUserId=nil,hudEnabled=false,accountStatus={state="loading",checked=false,lastPoll=nil,details=nil},feedbackCooldown=0,gtaEnabled=false,gtaObjects={},gtaSavedFog=nil,rainOn=false,rainEmitterObj=nil,rainAttachment=nil}
+local S={unloaded=false,locked=false,lockType=nil,connections={},espEnabled=false,showTracer=true,showHP=true,showName=true,showDist=true,showChams=true,deadCleanup=false,showHitbar=true,skeletonEnabled=false,c4Enabled=false,c4Color=Color3.fromRGB(255,120,0),c4Timers={},espCache={},wallhackEnabled=false,mapSpawnedParts={},savedMapChildren={},wallhackState="idle",wallhackCountdownStart=0,xrayEnabled=false,xraySavedTransparency={},timeSliderValue=12,timeLockerEnabled=false,skyEnabled=false,skyObject=nil,skySaved=nil,seasonState=0,snowPlates={},rainSound=nil,fallLeavesEmitter=nil,rainEmitter=nil,snowEmitter=nil,winterHats={},fullbrightEnabled=false,fullbrightSaved=nil,noFogEnabled=false,noFogSaved=nil,noFogAtmSaved=nil,graphicEnabled=false,graphicObjects={},fpsBoostEnabled=false,fpsBoostSaved={decals={},particles={},beams={},atmosphere=nil,shadows=nil},cameraMode=1,camMetaHookInstalled=false,camOldNewIndex=nil,morphState=0,noRecoilEnabled=false,bunnyHopEnabled=false,speedEnabled=false,speedStep=3,speedThread=nil,headshotAssistEnabled=false,lastCamLook=nil,bigHeadEnabled=false,bigHeadTeamCheck=false,originalSizes={},noclipEnabled=false,aimEnabled=false,aimFov=200,aimPart="Head",aimWallCheck=true,aimTeamCheck=true,aimHolding=false,aimHoldKey=Enum.UserInputType.MouseButton2,wallbangEnabled=false,rawMeta=nil,oldNamecall=nil,launchEnabled=false,launchHeight=35,launchBasePos=nil,spinEnabled=false,spinSpeed=720,giantEnabled=false,giantScale=3,giantOriginal={},tallEnabled=false,tallScale=2,tallOriginal={},betaNoclip=false,betaFly=false,betaSpeedVal=50,targetPlayerName="",tinfoEnabled=false,tinfoLastUserId=nil,hudEnabled=false,accountStatus={state="loading",checked=false,lastPoll=nil,details=nil},feedbackCooldown=0,gtaEnabled=false,gtaObjects={},gtaSavedFog=nil,rainOn=false,rainEmitterObj=nil,rainAttachment=nil,premiumJump=false,savedJumpPower=nil,premiumAntiAfk=false,antiAfkThread=nil,premiumNightVision=false,savedAmbient=nil,savedOutdoor=nil,savedBright=nil,premiumNoFog=false,savedFogEnd=nil,savedFogStart=nil,premiumInfJump=false,infJumpConn=nil,premiumFullBright=false,pbSavedB=nil,pbSavedA=nil,pbSavedO=nil,supportSerial=nil,supportStatus=nil,supportLastMsgCount=0}
 local KEEP_FOLDERS={Zones=true,ReplicationFocus=true,DeathBarriers=true,Barriers=true}
 local MORPHS={{name="NoModel",id=0},{name="Tung Tung Sahur",id=129575258275209},{name="Kotost",id=9834014321}}
-local CONFIG_KEYS={"espEnabled","showTracer","showHP","showName","showDist","showChams","deadCleanup","showHitbar","skeletonEnabled","c4Enabled","wallhackEnabled","xrayEnabled","timeSliderValue","timeLockerEnabled","skyEnabled","seasonState","fullbrightEnabled","noFogEnabled","graphicEnabled","fpsBoostEnabled","cameraMode","morphState","noRecoilEnabled","bunnyHopEnabled","speedEnabled","speedStep","headshotAssistEnabled","bigHeadEnabled","bigHeadTeamCheck","noclipEnabled","aimEnabled","aimFov","aimPart","aimWallCheck","aimTeamCheck","wallbangEnabled","launchEnabled","launchHeight","spinEnabled","spinSpeed","giantEnabled","giantScale","tallEnabled","tallScale","notificationsEnabled","hudEnabled","tinfoEnabled","gtaEnabled","rainOn"}
+local CONFIG_KEYS={"espEnabled","showTracer","showHP","showName","showDist","showChams","deadCleanup","showHitbar","skeletonEnabled","c4Enabled","wallhackEnabled","xrayEnabled","timeSliderValue","timeLockerEnabled","skyEnabled","seasonState","fullbrightEnabled","noFogEnabled","graphicEnabled","fpsBoostEnabled","cameraMode","morphState","noRecoilEnabled","bunnyHopEnabled","speedEnabled","speedStep","headshotAssistEnabled","bigHeadEnabled","bigHeadTeamCheck","noclipEnabled","aimEnabled","aimFov","aimPart","aimWallCheck","aimTeamCheck","wallbangEnabled","launchEnabled","launchHeight","spinEnabled","spinSpeed","giantEnabled","giantScale","tallEnabled","tallScale","notificationsEnabled","hudEnabled","tinfoEnabled","gtaEnabled","rainOn","premiumJump","premiumAntiAfk","premiumNightVision","premiumNoFog","premiumInfJump","premiumFullBright"}
 
 local function addConn(c) table.insert(S.connections,c) return c end
 
@@ -679,7 +719,7 @@ accentLine.Size=UDim2.new(0,80,0,2) accentLine.Position=UDim2.new(0,16,1,-2) acc
 local title=Instance.new("TextLabel")
 title.Size=UDim2.new(0,110,1,0) title.Position=UDim2.new(0,18,0,0) title.BackgroundTransparency=1 title.Text="WorkClient" title.TextColor3=UI.text title.TextSize=15 title.Font=Enum.Font.GothamBold title.TextXAlignment=Enum.TextXAlignment.Left title.Parent=topbar title.ZIndex=1002
 local versionLbl=Instance.new("TextLabel")
-versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.7" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
+versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.8" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
 local nickLabel=Instance.new("TextLabel")
 nickLabel.Size=UDim2.new(0,300,1,0) nickLabel.Position=UDim2.new(0,190,0,0)
 nickLabel.BackgroundTransparency=1 nickLabel.Text="-- "..LocalPlayer.Name.." --"
@@ -699,17 +739,14 @@ updateRankDisplay=function()
     rankLabel.TextColor3=(RANKS[currentRank] or RANKS.player).color
 end
 
--- Sidebar with SCROLLING so tabs never disappear on mobile
 local sidebarOuter=Instance.new("Frame")
 sidebarOuter.Size=UDim2.new(0,200,1,-70) sidebarOuter.Position=UDim2.new(0,12,0,54) sidebarOuter.BackgroundColor3=UI.panel sidebarOuter.BorderSizePixel=0 sidebarOuter.Parent=main sidebarOuter.ZIndex=1001
 addCorner(sidebarOuter,4) addStroke(sidebarOuter,UI.border,1)
-
 local sidebar=Instance.new("ScrollingFrame")
 sidebar.Size=UDim2.new(1,-4,1,-4) sidebar.Position=UDim2.new(0,2,0,2)
 sidebar.BackgroundTransparency=1 sidebar.BorderSizePixel=0
 sidebar.ScrollBarThickness=3 sidebar.ScrollBarImageColor3=UI.borderHi
-sidebar.CanvasSize=UDim2.new(0,0,0,0)
-sidebar.AutomaticCanvasSize=Enum.AutomaticSize.Y
+sidebar.CanvasSize=UDim2.new(0,0,0,0) sidebar.AutomaticCanvasSize=Enum.AutomaticSize.Y
 sidebar.Parent=sidebarOuter sidebar.ZIndex=1002
 
 local content=Instance.new("Frame")
@@ -751,23 +788,43 @@ local function makeSection(parent_,text,yPos)
     local lbl=Instance.new("TextLabel") lbl.Size=UDim2.new(1,-10,1,0) lbl.Position=UDim2.new(0,8,0,0) lbl.BackgroundTransparency=1 lbl.Text=string.upper(text) lbl.TextColor3=UI.textDim lbl.TextSize=11 lbl.Font=Enum.Font.GothamBold lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.Parent=container lbl.ZIndex=1002
     return container
 end
-local function makeButton(parent_,text,xPos,yPos,w,color,cb)
+local function makeButton(parent_,text,xPos,yPos,w,color,cb,featureReq)
     local b=Instance.new("TextButton")
-    b.Size=UDim2.new(w,0,0,30) b.Position=UDim2.new(xPos,0,0,yPos) b.BackgroundColor3=UI.panel2 b.BorderSizePixel=0 b.Text=text b.TextColor3=UI.text b.TextSize=12 b.Font=Enum.Font.GothamBold b.Parent=parent_ b.ZIndex=1002
+    b.Size=UDim2.new(w,0,0,30) b.Position=UDim2.new(xPos,0,0,yPos)
+    b.BackgroundColor3=UI.panel2 b.BorderSizePixel=0 b.Text=text b.TextColor3=UI.text
+    b.TextSize=12 b.Font=Enum.Font.GothamBold b.Parent=parent_ b.ZIndex=1002
     addCorner(b,4) addStroke(b,UI.border,1)
-    if cb then b.MouseButton1Click:Connect(function() if S.locked then return end cb(b) end) end
+    if featureReq and not canRunFeature(featureReq) then
+        b.Text="LOCK "..text
+        b.TextColor3=UI.textMute
+        local lock=Instance.new("TextLabel")
+        lock.Size=UDim2.new(0,16,0,16); lock.Position=UDim2.new(1,-20,0,7)
+        lock.BackgroundTransparency=1; lock.Text="L"; lock.TextColor3=UI.warn
+        lock.TextSize=14; lock.Font=Enum.Font.GothamBold; lock.Parent=b
+        b.MouseButton1Click:Connect(function() showUnsupportedPopup() end)
+    elseif cb then
+        b.MouseButton1Click:Connect(function() if S.locked then return end cb(b) end)
+    end
     return b
 end
-local function makeToggle(parent_,text,xPos,yPos,getState,setState)
+local function makeToggle(parent_,text,xPos,yPos,getState,setState,featureReq)
     local b=Instance.new("TextButton")
-    b.Size=UDim2.new(0.44,0,0,28) b.Position=UDim2.new(xPos,0,0,yPos) b.BackgroundColor3=UI.panel2 b.BorderSizePixel=0 b.Text=text b.TextColor3=UI.text b.TextSize=11 b.Font=Enum.Font.Gotham b.Parent=parent_ b.ZIndex=1002
+    b.Size=UDim2.new(0.44,0,0,28) b.Position=UDim2.new(xPos,0,0,yPos)
+    b.BackgroundColor3=UI.panel2 b.BorderSizePixel=0 b.Text=text b.TextColor3=UI.text
+    b.TextSize=11 b.Font=Enum.Font.Gotham b.Parent=parent_ b.ZIndex=1002
     addCorner(b,4) addStroke(b,UI.border,1)
-    setButtonState(b,getState())
-    b.MouseButton1Click:Connect(function()
-        if S.locked then return end
-        setState(not getState())
+    if featureReq and not canRunFeature(featureReq) then
+        b.Text="LOCK "..text
+        b.TextColor3=UI.textMute
+        b.MouseButton1Click:Connect(function() showUnsupportedPopup() end)
+    else
         setButtonState(b,getState())
-    end)
+        b.MouseButton1Click:Connect(function()
+            if S.locked then return end
+            setState(not getState())
+            setButtonState(b,getState())
+        end)
+    end
     return b
 end
 local function makeInput(parent_,labelText,xPos,yPos,w,defaultVal,onChange)
@@ -898,6 +955,11 @@ local function lockAllFeatures(type,reason,duration)
     S.headshotAssistEnabled=false S.bigHeadEnabled=false S.wallbangEnabled=false S.xrayEnabled=false
     S.timeLockerEnabled=false S.skyEnabled=false S.fullbrightEnabled=false S.noFogEnabled=false
     S.graphicEnabled=false S.fpsBoostEnabled=false S.gtaEnabled=false S.rainOn=false
+    S.premiumJump=false S.premiumAntiAfk=false S.premiumNightVision=false S.premiumNoFog=false S.premiumInfJump=false S.premiumFullBright=false
+    if S.infJumpConn then pcall(function() S.infJumpConn:Disconnect() end) S.infJumpConn=nil end
+    pcall(function() if S.savedAmbient then Lighting.Ambient=S.savedAmbient end if S.savedOutdoor then Lighting.OutdoorAmbient=S.savedOutdoor end if S.savedBright then Lighting.Brightness=S.savedBright end end)
+    pcall(function() if S.savedFogEnd then Lighting.FogEnd=S.savedFogEnd end if S.savedFogStart then Lighting.FogStart=S.savedFogStart end end)
+    pcall(function() if S.pbSavedB then Lighting.Brightness=S.pbSavedB end if S.pbSavedA then Lighting.Ambient=S.pbSavedA end if S.pbSavedO then Lighting.OutdoorAmbient=S.pbSavedO end end)
     pcall(function() restoreMap() end)
     pcall(function() disableXray() end)
     pcall(function() disableFullbright() end)
@@ -925,8 +987,9 @@ end
 local function applyAccountStatus(data)
     local newRank=data.rank or "player"
     if newRank~=currentRank then
-        currentRank=newRank localData.rank=currentRank saveLocal(localData) pcall(updateRankDisplay)
+        currentRank=newRank localData.rank=currentRank saveLocal(localData)
     end
+    pcall(updateRankDisplay)
     S.accountStatus=data S.accountStatus.checked=true S.accountStatus.lastPoll=os.date("%H:%M:%S")
     local wasLocked=S.locked
     if data.frozen then
@@ -963,6 +1026,15 @@ local function startPollLoop()
                         setStatusState("unknown","Player not found in DB")
                     elseif data.status=="ok" then
                         applyAccountStatus(data)
+                        if data.complaint and data.complaint.serial then
+                            if S.supportSerial ~= data.complaint.serial then
+                                S.supportSerial=data.complaint.serial
+                                S.supportStatus=data.complaint.status
+                                S.supportLastMsgCount=0
+                                pcall(refreshSupport)
+                                notify("Support ticket: "..data.complaint.serial, UI.accent)
+                            end
+                        end
                         if data.reconnect_pending then
                             pcall(function() httpPost(API_URL.."/reconnect/ack",{secret=API_SECRET,hwid=currentHWID}) end)
                             pcall(function() httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId}) end)
@@ -1021,7 +1093,7 @@ local cfFolder=getCharsFolder()
 if cfFolder then setupKillFeed(cfFolder)
 else addConn(workspace.ChildAdded:Connect(function(c) if c.Name=="Characters" then setupKillFeed(c) end end)) end
 
--- WALLHACK
+-- WALLHACK helpers
 local function hasHumanoidInside(obj)
     if obj:IsA("Humanoid") then return true end
     if obj:FindFirstChildOfClass("Humanoid") then return true end
@@ -1493,7 +1565,7 @@ local function highlightButtonSet(buttons, activeIdx)
     end
 end
 
--- PAGES
+-- ============ PAGES ============
 local mainPage=createPage("main")
 makeSection(mainPage,"Big Head",10)
 makeButton(mainPage,"Big Head: OFF",0.02,42,0.46,nil,function(self)
@@ -1641,12 +1713,12 @@ makeButton(visualsPage,"ESP: OFF",0.02,42,0.46,nil,function(self)
     S.espEnabled=not S.espEnabled
     self.Text="ESP: "..(S.espEnabled and "ON" or "OFF")
     setButtonState(self,S.espEnabled)
-end)
+end,"esp")
 makeButton(visualsPage,"C4 ESP: OFF",0.52,42,0.46,nil,function(self)
     S.c4Enabled=not S.c4Enabled
     self.Text="C4 ESP: "..(S.c4Enabled and "ON" or "OFF")
     setButtonState(self,S.c4Enabled,UI.warn)
-end)
+end,"c4esp")
 makeButton(visualsPage,"Skeleton: OFF",0.02,82,0.46,nil,function(self)
     S.skeletonEnabled=not S.skeletonEnabled
     self.Text="Skeleton: "..(S.skeletonEnabled and "ON" or "OFF")
@@ -1735,15 +1807,123 @@ for i,m in ipairs(MORPHS) do
     local col=(i-1)%2 local row=math.floor((i-1)/2)
     local b=makeButton(visualsPage,m.name,0.02+col*0.5,930+row*38,0.46,nil,function()
         setMorph(i-1); refreshMorphBtns(); notify("Model: "..m.name,UI.accent)
-    end)
+    end,"morph")
     table.insert(morphBtns,b)
 end
 refreshMorphBtns()
 
+-- SKIN CHANGER
 local scPage=createPage("skinchanger")
 local soonLabel=Instance.new("TextLabel")
 soonLabel.Size=UDim2.new(1,-20,0,80) soonLabel.Position=UDim2.new(0,10,0.4,-40) soonLabel.BackgroundTransparency=1 soonLabel.Text="COMING SOON" soonLabel.TextColor3=UI.yellow soonLabel.TextScaled=true soonLabel.Font=Enum.Font.GothamBold soonLabel.Parent=scPage soonLabel.ZIndex=1002
 
+-- PREMIUM PAGE (only for premium access)
+local premiumPage=createPage("premium")
+makeSection(premiumPage,"Premium Features",10)
+makeButton(premiumPage,"Super Jump: OFF",0.02,42,0.46,nil,function(self)
+    S.premiumJump=not S.premiumJump
+    self.Text="Super Jump: "..(S.premiumJump and "ON" or "OFF")
+    setButtonState(self,S.premiumJump,UI.yellow)
+    local char=LocalPlayer.Character
+    if char then
+        local hum=char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            if S.premiumJump then
+                S.savedJumpPower=hum.JumpPower
+                hum.JumpPower=120
+                if hum.UseJumpPower==false then hum.UseJumpPower=true end
+            else
+                if S.savedJumpPower then hum.JumpPower=S.savedJumpPower end
+            end
+        end
+    end
+end)
+makeButton(premiumPage,"Anti-AFK: OFF",0.52,42,0.46,nil,function(self)
+    S.premiumAntiAfk=not S.premiumAntiAfk
+    self.Text="Anti-AFK: "..(S.premiumAntiAfk and "ON" or "OFF")
+    setButtonState(self,S.premiumAntiAfk,UI.yellow)
+    if S.premiumAntiAfk then
+        if not S.antiAfkThread then
+            S.antiAfkThread=task.spawn(function()
+                while not S.unloaded and S.premiumAntiAfk do
+                    pcall(function() VirtualUser:CaptureController() VirtualUser:ClickButton2(Vector2.new()) end)
+                    task.wait(60)
+                end
+                S.antiAfkThread=nil
+            end)
+        end
+    end
+end)
+makeSection(premiumPage,"Vision",82)
+makeButton(premiumPage,"Night Vision: OFF",0.02,114,0.46,nil,function(self)
+    S.premiumNightVision=not S.premiumNightVision
+    self.Text="Night Vision: "..(S.premiumNightVision and "ON" or "OFF")
+    setButtonState(self,S.premiumNightVision,UI.yellow)
+    if S.premiumNightVision then
+        S.savedAmbient=Lighting.Ambient
+        S.savedOutdoor=Lighting.OutdoorAmbient
+        S.savedBright=Lighting.Brightness
+        Lighting.Ambient=Color3.fromRGB(20,80,20)
+        Lighting.OutdoorAmbient=Color3.fromRGB(20,80,20)
+        Lighting.Brightness=3
+    else
+        if S.savedAmbient then Lighting.Ambient=S.savedAmbient end
+        if S.savedOutdoor then Lighting.OutdoorAmbient=S.savedOutdoor end
+        if S.savedBright then Lighting.Brightness=S.savedBright end
+    end
+end)
+makeButton(premiumPage,"Remove Fog: OFF",0.52,114,0.46,nil,function(self)
+    S.premiumNoFog=not S.premiumNoFog
+    self.Text="Remove Fog: "..(S.premiumNoFog and "ON" or "OFF")
+    setButtonState(self,S.premiumNoFog,UI.yellow)
+    if S.premiumNoFog then
+        S.savedFogEnd=Lighting.FogEnd
+        S.savedFogStart=Lighting.FogStart
+        Lighting.FogEnd=1e7 Lighting.FogStart=0
+    else
+        if S.savedFogEnd then Lighting.FogEnd=S.savedFogEnd end
+        if S.savedFogStart then Lighting.FogStart=S.savedFogStart end
+    end
+end)
+makeSection(premiumPage,"Movement",154)
+makeButton(premiumPage,"Infinite Jump: OFF",0.02,186,0.96,nil,function(self)
+    S.premiumInfJump=not S.premiumInfJump
+    self.Text="Infinite Jump: "..(S.premiumInfJump and "ON" or "OFF")
+    setButtonState(self,S.premiumInfJump,UI.yellow)
+    if S.premiumInfJump and not S.infJumpConn then
+        S.infJumpConn=UserInputService.JumpRequest:Connect(function()
+            if S.unloaded or not S.premiumInfJump then return end
+            local char=LocalPlayer.Character
+            if char then local hum=char:FindFirstChildOfClass("Humanoid")
+                if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end end
+        end)
+    end
+end)
+makeButton(premiumPage,"Full Brightness: OFF",0.02,226,0.96,nil,function(self)
+    S.premiumFullBright=not S.premiumFullBright
+    self.Text="Full Brightness: "..(S.premiumFullBright and "ON" or "OFF")
+    setButtonState(self,S.premiumFullBright,UI.yellow)
+    if S.premiumFullBright then
+        S.pbSavedB=Lighting.Brightness
+        S.pbSavedA=Lighting.Ambient
+        S.pbSavedO=Lighting.OutdoorAmbient
+        Lighting.Brightness=3 Lighting.Ambient=Color3.fromRGB(200,200,200) Lighting.OutdoorAmbient=Color3.fromRGB(200,200,200)
+    else
+        if S.pbSavedB then Lighting.Brightness=S.pbSavedB end
+        if S.pbSavedA then Lighting.Ambient=S.pbSavedA end
+        if S.pbSavedO then Lighting.OutdoorAmbient=S.pbSavedO end
+    end
+end)
+makeSection(premiumPage,"Info",266)
+local premInfo=Instance.new("TextLabel")
+premInfo.Size=UDim2.new(0.96,0,0,80) premInfo.Position=UDim2.new(0.02,0,0,298)
+premInfo.BackgroundTransparency=1
+premInfo.Text="Premium unlocks at supporter / premium / beta / admin / owner.\n\nLOCK buttons = your executor doesn't support the required functions."
+premInfo.TextColor3=UI.textDim premInfo.TextSize=12 premInfo.Font=Enum.Font.Gotham
+premInfo.TextXAlignment=Enum.TextXAlignment.Left premInfo.TextYAlignment=Enum.TextYAlignment.Top
+premInfo.TextWrapped=true premInfo.Parent=premiumPage premInfo.ZIndex=1002
+
+-- BETA
 local betaPage=createPage("beta")
 makeSection(betaPage,"Combat",10)
 makeButton(betaPage,"No Recoil: OFF",0.02,42,0.46,nil,function(self)
@@ -1761,7 +1941,7 @@ makeButton(betaPage,"Headshot Assist: OFF",0.02,114,0.96,nil,function(self)
     S.headshotAssistEnabled=not S.headshotAssistEnabled
     self.Text="Headshot Assist: "..(S.headshotAssistEnabled and "ON" or "OFF")
     setButtonState(self,S.headshotAssistEnabled,UI.warn)
-end)
+end,"headshot")
 makeSection(betaPage,"Speed Hack",154)
 makeButton(betaPage,"Speed: OFF",0.02,186,0.96,nil,function(self)
     S.speedEnabled=not S.speedEnabled
@@ -1886,7 +2066,6 @@ addConn(RunService.Heartbeat:Connect(function(dt)
     local newPos=curPivot.Position+move*dt
     moveChar(char,CFrame.new(newPos)*(curPivot-curPivot.Position))
 end))
-
 makeSection(betaPage,"GTA Graphics",830)
 makeButton(betaPage,"GTA Graphics: OFF",0.02,862,0.96,nil,function(self)
     if S.gtaEnabled then
@@ -1943,6 +2122,7 @@ makeButton(adminPage,"Restore camera",0.02,122,0.96,nil,function()
     if h then workspace.CurrentCamera.CameraSubject=h end
 end)
 
+-- ADMIN PANEL
 local adminPanelPage=createPage("adminpanel")
 makeSection(adminPanelPage,"Command Line",10)
 local cmdLog=Instance.new("ScrollingFrame")
@@ -1993,7 +2173,7 @@ end
 sendBtn.MouseButton1Click:Connect(function() processCommand(cmdInput.Text) cmdInput.Text="" end)
 cmdInput.FocusLost:Connect(function(e) if e then processCommand(cmdInput.Text) cmdInput.Text="" end end)
 
--- SETTINGS (English)
+-- SETTINGS
 local settingsPage=createPage("settings")
 makeSection(settingsPage,"Information (click to copy)",10)
 local function clickableInfoRow(parent_,label,value,yPos,valColor,copyValue)
@@ -2102,9 +2282,11 @@ makeButton(settingsPage,"Refresh from server",0.02,478,0.96,nil,function(self)
     createTabButton("main","Main",UI.text)
     createTabButton("visuals","Visuals",UI.accent)
     createTabButton("skinchanger","Skin Changer",UI.yellow)
+    if hasAccess("premium") then createTabButton("premium","Premium",UI.yellow) end
     if hasAccess("beta") then createTabButton("beta","Beta",Color3.fromRGB(200,140,255)) end
     if hasAccess("admin") then createTabButton("admin","Admin",UI.warn) end
     if hasAccess("adminpanel") then createTabButton("adminpanel","Admin Panel",UI.bad) end
+    createTabButton("support","Support",UI.accent)
     createTabButton("configs","Configs",UI.good)
     createTabButton("feedback","Feedback",UI.accent)
     createTabButton("settings","Settings",UI.accent)
@@ -2112,7 +2294,136 @@ makeButton(settingsPage,"Refresh from server",0.02,478,0.96,nil,function(self)
     self.Text="Done" task.wait(1.2) self.Text="Refresh from server"
 end)
 
--- FEEDBACK (English)
+-- SUPPORT PAGE
+local supportPage=createPage("support")
+makeSection(supportPage,"Support Ticket",10)
+local supportIntro=Instance.new("TextLabel")
+supportIntro.Size=UDim2.new(0.96,0,0,50) supportIntro.Position=UDim2.new(0.02,0,0,42)
+supportIntro.BackgroundTransparency=1
+supportIntro.Text="No active ticket. A ticket opens when admin uses Support Mode on you."
+supportIntro.TextColor3=UI.textDim supportIntro.TextSize=12 supportIntro.Font=Enum.Font.Gotham
+supportIntro.TextXAlignment=Enum.TextXAlignment.Left supportIntro.TextYAlignment=Enum.TextYAlignment.Top
+supportIntro.TextWrapped=true supportIntro.Parent=supportPage supportIntro.ZIndex=1002
+local supportStatusLbl=Instance.new("TextLabel")
+supportStatusLbl.Size=UDim2.new(0.96,0,0,20) supportStatusLbl.Position=UDim2.new(0.02,0,0,96)
+supportStatusLbl.BackgroundTransparency=1 supportStatusLbl.Text=""
+supportStatusLbl.TextColor3=UI.accent supportStatusLbl.TextSize=13
+supportStatusLbl.Font=Enum.Font.GothamBold supportStatusLbl.TextXAlignment=Enum.TextXAlignment.Left
+supportStatusLbl.Parent=supportPage supportStatusLbl.ZIndex=1002
+local supportLog=Instance.new("ScrollingFrame")
+supportLog.Size=UDim2.new(0.96,0,0,240) supportLog.Position=UDim2.new(0.02,0,0,122)
+supportLog.BackgroundColor3=UI.bg supportLog.BorderSizePixel=0
+supportLog.ScrollBarThickness=4 supportLog.ScrollBarImageColor3=UI.borderHi
+supportLog.CanvasSize=UDim2.new(0,0,0,0) supportLog.AutomaticCanvasSize=Enum.AutomaticSize.Y
+supportLog.Parent=supportPage supportLog.ZIndex=1002
+addCorner(supportLog,4) addStroke(supportLog,UI.border,1)
+local sLogLayout=Instance.new("UIListLayout")
+sLogLayout.Padding=UDim.new(0,4) sLogLayout.SortOrder=Enum.SortOrder.LayoutOrder sLogLayout.Parent=supportLog
+local sLogPad=Instance.new("UIPadding")
+sLogPad.PaddingTop=UDim.new(0,6) sLogPad.PaddingLeft=UDim.new(0,8) sLogPad.PaddingRight=UDim.new(0,8) sLogPad.Parent=supportLog
+local supportInput=Instance.new("TextBox")
+supportInput.Size=UDim2.new(0.72,0,0,34) supportInput.Position=UDim2.new(0.02,0,0,372)
+supportInput.BackgroundColor3=UI.input supportInput.BorderSizePixel=0
+supportInput.PlaceholderText="Message..." supportInput.Text=""
+supportInput.TextColor3=UI.text supportInput.TextSize=12 supportInput.Font=Enum.Font.Gotham
+supportInput.ClearTextOnFocus=false supportInput.Parent=supportPage supportInput.ZIndex=1002
+addCorner(supportInput,4) addStroke(supportInput,UI.border,1)
+local sPad=Instance.new("UIPadding") sPad.PaddingLeft=UDim.new(0,10) sPad.Parent=supportInput
+local supportSendBtn=Instance.new("TextButton")
+supportSendBtn.Size=UDim2.new(0.22,0,0,34) supportSendBtn.Position=UDim2.new(0.76,0,0,372)
+supportSendBtn.BackgroundColor3=UI.panel2 supportSendBtn.BorderSizePixel=0
+supportSendBtn.Text="Send" supportSendBtn.TextColor3=UI.accent
+supportSendBtn.TextSize=12 supportSendBtn.Font=Enum.Font.GothamBold supportSendBtn.Parent=supportPage supportSendBtn.ZIndex=1002
+addCorner(supportSendBtn,4) addStroke(supportSendBtn,UI.accent,1.5)
+
+local function renderSupportLog(messages)
+    for _,ch in ipairs(supportLog:GetChildren()) do
+        if ch:IsA("TextLabel") then ch:Destroy() end
+    end
+    for i,m in ipairs(messages) do
+        local lbl=Instance.new("TextLabel")
+        local who=(m.sender_type=="player") and "You" or "Support"
+        local col=(m.sender_type=="player") and UI.accent or UI.good
+        lbl.Size=UDim2.new(1,0,0,26) lbl.BackgroundTransparency=1
+        lbl.Text="["..who.."] "..tostring(m.text)
+        lbl.TextColor3=col lbl.TextSize=12 lbl.Font=Enum.Font.Gotham
+        lbl.TextXAlignment=Enum.TextXAlignment.Left lbl.TextWrapped=true
+        lbl.LayoutOrder=i lbl.AutomaticSize=Enum.AutomaticSize.Y
+        lbl.Parent=supportLog
+    end
+end
+
+local function refreshSupport()
+    if not S.supportSerial then
+        supportIntro.Text="No active ticket."
+        supportStatusLbl.Text=""
+        return
+    end
+    task.spawn(function()
+        local res=httpPost(API_URL.."/complaint/messages",{secret=API_SECRET, serial=S.supportSerial})
+        if not res then return end
+        local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
+        if not ok or type(data)~="table" or data.status~="ok" then return end
+        S.supportStatus=data.complaint.status
+        supportStatusLbl.Text="Ticket "..S.supportSerial.." · Status: "..string.upper(S.supportStatus)
+        if S.supportStatus=="closed" or S.supportStatus=="refused" then
+            supportStatusLbl.TextColor3=UI.bad
+        elseif S.supportStatus=="resolved" then
+            supportStatusLbl.TextColor3=UI.good
+        else
+            supportStatusLbl.TextColor3=UI.warn
+        end
+        if #data.messages ~= S.supportLastMsgCount then
+            S.supportLastMsgCount=#data.messages
+            renderSupportLog(data.messages)
+        end
+        if S.supportStatus=="closed" or S.supportStatus=="refused" or S.supportStatus=="resolved" then
+            supportInput.Text=""
+            supportInput.PlaceholderText="Ticket closed"
+            supportSendBtn.BackgroundColor3=UI.panel3
+            task.delay(10,function()
+                S.supportSerial=nil S.supportStatus=nil S.supportLastMsgCount=0
+                supportIntro.Text="Ticket closed. Wait for new tickets."
+                supportStatusLbl.Text=""
+                supportInput.PlaceholderText="Message..."
+                supportSendBtn.BackgroundColor3=UI.panel2
+                for _,ch in ipairs(supportLog:GetChildren()) do
+                    if ch:IsA("TextLabel") then ch:Destroy() end
+                end
+            end)
+        else
+            supportInput.PlaceholderText="Message..."
+            supportSendBtn.BackgroundColor3=UI.panel2
+        end
+    end)
+end
+
+supportSendBtn.MouseButton1Click:Connect(function()
+    if not S.supportSerial then return end
+    if S.supportStatus and S.supportStatus~="waiting" then return end
+    local txt=supportInput.Text:gsub("^%s+",""):gsub("%s+$","")
+    if txt=="" then return end
+    supportInput.Text=""
+    task.spawn(function()
+        local res=httpPost(API_URL.."/complaint/send",{secret=API_SECRET, serial=S.supportSerial, hwid=currentHWID, text=txt})
+        if res then
+            local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
+            if ok and data and data.status=="ok" then
+                S.supportLastMsgCount=0
+                refreshSupport()
+            end
+        end
+    end)
+end)
+
+task.spawn(function()
+    while not S.unloaded do
+        task.wait(4)
+        if S.supportSerial then refreshSupport() end
+    end
+end)
+
+-- FEEDBACK
 local feedbackPage=createPage("feedback")
 makeSection(feedbackPage,"Feedback",10)
 local fbIntro=Instance.new("TextLabel")
@@ -2205,7 +2516,7 @@ task.spawn(function()
     end
 end)
 
--- CONFIGS (English)
+-- CONFIGS
 local configsPage=createPage("configs")
 makeSection(configsPage,"Config Manager",10)
 local configNameBox=Instance.new("TextBox")
@@ -2227,7 +2538,7 @@ makeButton(configsPage,"Create Config",0.02,84,0.46,nil,function(self)
     if ok then self.Text="Created: "..name setButtonState(self,true,UI.good) notify("Config created: "..name,UI.good) task.wait(1.5) self.Text="Create Config" setButtonState(self,false)
     if _G._wc_refresh_config_list then _G._wc_refresh_config_list() end
     else self.Text="Write failed" setButtonState(self,false,UI.bad) task.wait(1.5) self.Text="Create Config" setButtonState(self,false) end
-end)
+end,"filesystem")
 makeButton(configsPage,"Load Config",0.52,84,0.46,nil,function(self)
     if S.locked then notify("Account locked",UI.bad) return end
     local name=configNameBox.Text:gsub("^%s+",""):gsub("%s+$","")
@@ -2257,7 +2568,7 @@ makeButton(configsPage,"Load Config",0.52,84,0.46,nil,function(self)
     notificationsEnabled=S.notificationsEnabled and true or false
     self.Text="Loaded!" setButtonState(self,true,UI.good) notify("Config loaded: "..name,UI.good)
     task.wait(1.5) self.Text="Load Config" setButtonState(self,false)
-end)
+end,"filesystem")
 makeButton(configsPage,"Delete Config",0.02,124,0.46,nil,function(self)
     if S.locked then return end
     local name=configNameBox.Text:gsub("^%s+",""):gsub("%s+$","")
@@ -2268,7 +2579,7 @@ makeButton(configsPage,"Delete Config",0.02,124,0.46,nil,function(self)
     if ok then self.Text="Deleted: "..name setButtonState(self,true,UI.bad) notify("Config deleted: "..name,UI.bad) task.wait(1.5) self.Text="Delete Config" setButtonState(self,false)
     if _G._wc_refresh_config_list then _G._wc_refresh_config_list() end
     else self.Text="Delete failed" setButtonState(self,false,UI.bad) task.wait(1.5) self.Text="Delete Config" setButtonState(self,false) end
-end)
+end,"delfile")
 makeButton(configsPage,"Auto-load: OFF",0.52,124,0.46,nil,function(self)
     if S.locked then notify("Account locked",UI.bad) return end
     if _G._wc_autoload then
@@ -2283,7 +2594,7 @@ makeButton(configsPage,"Auto-load: OFF",0.52,124,0.46,nil,function(self)
         if ok then _G._wc_autoload=true self.Text="Auto-load: "..name setButtonState(self,true,UI.good) notify("Auto-load enabled: "..name,UI.good)
         else self.Text="Write failed" setButtonState(self,false,UI.bad) task.wait(1.5) self.Text="Auto-load: OFF" setButtonState(self,false) end
     end
-end)
+end,"filesystem")
 makeSection(configsPage,"Available Configs",170)
 local configListFrame=Instance.new("Frame")
 configListFrame.Size=UDim2.new(0.96,0,0,220) configListFrame.Position=UDim2.new(0.02,0,0,202)
@@ -2660,6 +2971,46 @@ addConn(LocalPlayer.CharacterAdded:Connect(function(c)
     enforceCamera()
 end))
 
+task.spawn(function()
+    task.wait(1)
+    if S.locked then return end
+    if readfile and isfile and isfile(AUTOLOAD_FILE) then
+        local ok,name=pcall(function() return readfile(AUTOLOAD_FILE) end)
+        if ok and name and name~="" then
+            local path=FOLDER_CONFIGS.."/"..name..".json"
+            if isfile(path) then
+                local ok2,raw=pcall(function() return readfile(path) end)
+                if ok2 and raw then
+                    local ok3,data=pcall(function() return HttpService:JSONDecode(raw) end)
+                    if ok3 and type(data)=="table" then
+                        for _,k in ipairs(CONFIG_KEYS) do if data[k]~=nil then S[k]=data[k] end end
+                        if S.locked then return end
+                        if S.fullbrightEnabled then enableFullbright() end
+                        if S.noFogEnabled then enableNoFog() end
+                        if S.graphicEnabled then enableGraphic() end
+                        if S.fpsBoostEnabled then enableFpsBoost() end
+                        if S.skyEnabled then enableSky() end
+                        if S.xrayEnabled then enableXray() end
+                        if S.gtaEnabled then enableGtaGraphic() end
+                        if S.rainOn then enableRain() end
+                        setSeason(S.seasonState or 0) refreshSeasonBtns()
+                        setCameraMode(S.cameraMode or 1)
+                        setMorph(S.morphState or 0) refreshMorphBtns()
+                        setHudVisible(S.hudEnabled and true or false)
+                        if S.timeSliderValue then pcall(function() Lighting.ClockTime=S.timeSliderValue end) end
+                        notificationsEnabled=S.notificationsEnabled and true or false
+                        _G._wc_autoload=true
+                        notify("Auto-loaded: "..name,UI.good)
+                        if configNameBox and configNameBox.Parent then configNameBox.Text=name end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+startPollLoop()
+
 -- MINI BTN
 local miniBtn=Instance.new("TextButton")
 miniBtn.Size=UDim2.new(0,50,0,50) miniBtn.Position=UDim2.new(0,20,0.5,-25) miniBtn.BackgroundColor3=UI.panel2 miniBtn.BorderSizePixel=0 miniBtn.Text="WC" miniBtn.TextColor3=UI.accent miniBtn.TextSize=14 miniBtn.Font=Enum.Font.GothamBold miniBtn.Visible=false miniBtn.Parent=sg miniBtn.ZIndex=2000 miniBtn.Active=true
@@ -2728,6 +3079,7 @@ closeBtn.MouseButton1Click:Connect(function()
     pcall(function() disableSky() end)
     pcall(function() disableGtaGraphic() end)
     pcall(function() disableRain() end)
+    pcall(function() if S.infJumpConn then S.infJumpConn:Disconnect() end end)
     pcall(function() hideLockOverlay() end)
     pcall(function() LocalPlayer.CameraMode=Enum.CameraMode.Classic LocalPlayer.CameraMinZoomDistance=0.5 LocalPlayer.CameraMaxZoomDistance=128 end)
     S.wallhackEnabled=false S.xrayEnabled=false S.timeLockerEnabled=false
@@ -2740,77 +3092,106 @@ closeBtn.MouseButton1Click:Connect(function()
     pcall(function() popupSg:Destroy() end)
 end)
 
+-- TABS
 createTabButton("main","Main",UI.text)
 createTabButton("visuals","Visuals",UI.accent)
 createTabButton("skinchanger","Skin Changer",UI.yellow)
+if hasAccess("premium") then createTabButton("premium","Premium",UI.yellow) end
 if hasAccess("beta") then createTabButton("beta","Beta",Color3.fromRGB(200,140,255)) end
 if hasAccess("admin") then createTabButton("admin","Admin",UI.warn) end
 if hasAccess("adminpanel") then createTabButton("adminpanel","Admin Panel",UI.bad) end
+createTabButton("support","Support",UI.accent)
 createTabButton("configs","Configs",UI.good)
 createTabButton("feedback","Feedback",UI.accent)
 createTabButton("settings","Settings",UI.accent)
 switchTab("main")
 
--- Start polling in background (no blocking at startup)
-startPollLoop()
-
--- Async register to catch reset_notice / AdminSkip in background
-task.spawn(function()
-    local data=registerOnServer()
-    if not data then return end
-    if S.unloaded then return end
-    if data.reset_notice and data.reset_notice~="" then
-        pcall(function() showResetDialog(data.reset_notice,function()
-            pcall(function() httpPost(API_URL.."/clear_notice",{secret=API_SECRET,hwid=currentHWID}) end)
-            localData.key=nil localData.rank=nil localData.activated=nil
-            saveLocal(localData)
-            pcall(updateRankDisplay)
-        end) end)
-    end
-    -- If admin gave ADMIN_SKIP but user has no local key (rare case) - update
-    if data.activated_key and data.activated_key~="" and (not localData.key or localData.key=="") then
-        localData.key=data.activated_key localData.rank=data.rank or "player"
-        saveLocal(localData)
-        currentKey=data.activated_key
-    end
-end)
-
 end -- end runMainGUI
 
--- ============ STARTUP ============
+-- ============ START FLOW ============
 local function startFlow()
     local loader=createLoadingScreen()
 
-    loader.step("Loading script",2)
-    if executorName then loader.executor(executorName) else loader.executor("Unknown") end
+    -- Step 1: Load script
+    loader.step("Loading script",1.2)
+    if not Players or not RunService or not HttpService or not UserInputService then
+        loader.fail("Critical modules missing")
+        task.wait(2); loader.close()
+        return
+    end
+    loader.ok()
 
-    loader.step("Connecting API",2)
-    loader.success()
+    -- Step 2: Detect executor (separate step)
+    loader.step("Detecting executor",1.5)
+    if not executorName then
+        loader.info("Unknown executor",UI.warn)
+    else
+        loader.info(executorName,UI.yellow)
+    end
 
-    loader.step("Checking script integrity",2)
-    loader.success()
+    -- Step 3: Test executor capabilities
+    loader.step("Testing executor capabilities",1.5)
+    local ok_count,total=runExecTest()
+    local color=UI.good
+    if ok_count<15 then color=UI.bad
+    elseif ok_count<30 then color=UI.warn end
+    loader.info(ok_count.." / "..total.." passed",color)
+    if ok_count<5 then
+        loader.fail("Executor not supported")
+        task.wait(2); loader.close()
+        return
+    end
 
-    loader.step("Checking active key",2)
+    -- Step 4: Connect API
+    loader.step("Connecting API",1.0)
+    local hasHttp=false
+    if syn and syn.request then hasHttp=true
+    elseif request then hasHttp=true
+    elseif http and http.request then hasHttp=true end
+    if not hasHttp then
+        loader.fail("No HTTP library available")
+        task.wait(2); loader.close()
+        return
+    end
+    loader.ok()
 
+    -- Step 5: Test server connection
+    loader.step("Testing server connection",0.5)
+    local resPing=nil
+    local pingDone=false
+    task.spawn(function()
+        resPing=httpPost(API_URL.."/",{})
+        pingDone=true
+    end)
+    local t0=tick()
+    while not pingDone and tick()-t0<8 do task.wait(0.1) end
+    if not pingDone or not resPing then
+        loader.fail("Server not responding (timeout)")
+        task.wait(2); loader.close()
+        return
+    end
+    loader.ok("server: ok")
+
+    -- Step 6: Check key
+    loader.step("Checking active key",0.5)
     local hasKeyLocal=localData.key and localData.key~=""
-
+    local data=nil
     if not hasKeyLocal then
-        -- Try server quick check (max 3 sec) to catch ADMIN_SKIP / reset_notice
-        local timeout=tick()+3
-        local done=false
-        local res=nil
+        local resKey=nil; local keyDone=false
         task.spawn(function()
-            res=httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId})
-            done=true
+            resKey=httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId})
+            keyDone=true
         end)
-        while not done and tick()<timeout do task.wait(0.1) end
-
-        local data=nil
-        if res then
-            local ok,d=pcall(function() return HttpService:JSONDecode(res) end)
-            if ok and type(d)=="table" then data=d end
+        local t1=tick()
+        while not keyDone and tick()-t1<8 do task.wait(0.1) end
+        if not keyDone or not resKey then
+            loader.fail("Server timeout on key check")
+            task.wait(2); loader.close()
+            showKeyMenu()
+            return
         end
-
+        local ok,d=pcall(function() return HttpService:JSONDecode(resKey) end)
+        if ok and type(d)=="table" then data=d end
         if data and data.reset_notice and data.reset_notice~="" then
             loader.close()
             showResetDialog(data.reset_notice,function()
@@ -2821,36 +3202,35 @@ local function startFlow()
             end)
             return
         end
-
         if data and data.activated_key and data.activated_key~="" then
             localData.key=data.activated_key
             localData.rank=data.rank or "player"
             saveLocal(localData)
             currentKey=data.activated_key
             currentRank=localData.rank
-            loader.success()
+            loader.ok("key activated")
         else
             loader.fail("No active key")
-            task.wait(0.3)
-            loader.close()
+            task.wait(1.5); loader.close()
             showKeyMenu()
             return
         end
     else
         currentKey=localData.key
         currentRank=localData.rank or "player"
-        loader.success()
+        loader.ok("key cached")
     end
 
-    loader.step("Checking account status",2)
+    -- Step 7: Check account status
+    loader.step("Checking account status",0.5)
     local statusText="All good"
     local statusColor=UI.good
     if data then
-        if data.banned then statusText="Account banned"; statusColor=UI.bad
-        elseif data.frozen then statusText="Account frozen"; statusColor=UI.freeze
+        if data.banned then statusText="Account BANNED"; statusColor=UI.bad
+        elseif data.frozen then statusText="Account FROZEN"; statusColor=UI.freeze
         elseif data.check_status then statusText="Under review"; statusColor=UI.warn end
     end
-    loader.status(statusText,statusColor)
+    loader.info(statusText,statusColor)
     loader.close()
 
     keyPassed=true
@@ -2860,7 +3240,10 @@ end
 task.spawn(function()
     local ok,err=pcall(startFlow)
     if not ok then
-        pcall(function() if _G._wc_loadingSg then _G._wc_loadingSg:Destroy() end end)
+        pcall(function()
+            local o=parent:FindFirstChild("_bs_loading")
+            if o then o:Destroy() end
+        end)
         pcall(function() showKeyMenu() end)
     end
 end)
