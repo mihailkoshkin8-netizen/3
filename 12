@@ -1,4 +1,4 @@
--- WorkClient | Blox Strike | v30.6 | by WorkSaturn17940
+-- WorkClient | Blox Strike | v30.7 | by WorkSaturn17940
 local Players=game:GetService("Players")
 local RunService=game:GetService("RunService")
 local UserInputService=game:GetService("UserInputService")
@@ -17,17 +17,13 @@ local DATA_FILE=FOLDER_INFO.."/data.json"
 local AUTOLOAD_FILE=FOLDER_CONFIGS.."/_autoload.txt"
 local RAIN_SOUND_ID="rbxassetid://131961136"
 
--- ============ MOBILE DETECTION ============
 local isMobile=false
 pcall(function()
     isMobile=UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end)
-local POLL_INTERVAL=isMobile and 8 or 5
-local LOADING_STEP_TIME=isMobile and 1.5 or 3
-local LOADING_SUCCESS_TIME=isMobile and 0.8 or 1.5
-local HTTP_TIMEOUT=isMobile and 8 or 12
+local POLL_INTERVAL=5
 
--- ============ EXECUTOR DETECTION ============
+-- Executor detection
 local executorName=nil
 local function detectExecutorName()
     if identifyexecutor then
@@ -39,12 +35,12 @@ local function detectExecutorName()
         if ok and type(name)=="string" and name~="" then return name end
     end
     local checks={
-        {"Synapse X",function() return syn and (syn.request or syn.protect_gui) end},
+        {"Synapse",function() return syn and (syn.request or syn.protect_gui) end},
         {"Script-Ware",function() return typeof(script_ware)~="nil" end},
-        {"Krnl",function() return KRNL_LOADED~=nil or (getgenv and getgenv().KRNL_LOADED) end},
+        {"Krnl",function() return KRNL_LOADED~=nil end},
         {"Fluxus",function() return fluxus~=nil end},
-        {"Delta",function() return typeof(delta)~="nil" or (getgenv and getgenv().delta) end},
-        {"Arceus X",function() return typeof(ArceusX)~="nil" or (getgenv and getgenv().ArceusX) end},
+        {"Delta",function() return typeof(delta)~="nil" end},
+        {"Arceus X",function() return typeof(ArceusX)~="nil" end},
         {"Hydrogen",function() return typeof(Hydrogen)~="nil" end},
         {"Codex",function() return typeof(codex)~="nil" end},
     }
@@ -52,9 +48,7 @@ local function detectExecutorName()
         local ok,res=pcall(c[2])
         if ok and res then return c[1] end
     end
-    if syn and syn.request then return "Synapse" end
-    if request and (gethui or protect_gui) then return "Universal" end
-    if request then return "Unknown (request)" end
+    if request then return "Universal" end
     return nil
 end
 executorName=detectExecutorName()
@@ -77,10 +71,9 @@ local function ensureFolders()
 end
 ensureFolders()
 
--- ============ HTTP (улучшенный парсинг + защита) ============
 local function httpPost(url,body)
     local okEnc,json=pcall(function() return HttpService:JSONEncode(body) end)
-    if not okEnc or not json then return nil,"encode_failed" end
+    if not okEnc or not json then return nil end
     local opts={Url=url,Method="POST",Headers={["Content-Type"]="application/json"},Body=json}
     local function parseResponse(r)
         if not r then return nil end
@@ -88,8 +81,6 @@ local function httpPost(url,body)
         if type(r)=="table" then
             if r.Body then return r.Body end
             if r.body then return r.body end
-            if r.Response then return r.Response end
-            if r.response then return r.response end
         end
         return nil
     end
@@ -104,30 +95,7 @@ local function httpPost(url,body)
             if parsed then return parsed end
         end
     end
-    return nil,"no_request"
-end
-
--- Асинхронный запрос с таймаутом — НЕ блокирует UI на мобилках долго
-local function httpPostAsync(url,body,timeout,callback)
-    timeout=timeout or HTTP_TIMEOUT
-    local done=false
-    local result=nil
-    local err=nil
-    task.spawn(function()
-        result,err=httpPost(url,body)
-        done=true
-    end)
-    task.spawn(function()
-        local start=tick()
-        while not done and tick()-start<timeout do
-            task.wait(0.1)
-        end
-        if not done then
-            if callback then pcall(callback,nil,"timeout") end
-        else
-            if callback then pcall(callback,result,err) end
-        end
-    end)
+    return nil
 end
 
 local function saveLocal(data) if writefile then pcall(function() writefile(DATA_FILE,HttpService:JSONEncode(data)) end) end end
@@ -159,7 +127,22 @@ local currentKey=localData.key
 local isBanned=false
 local banInfo={}
 
--- ============ GUI PARENT (мобильный фикс) ============
+local function registerOnServer()
+    local res=httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId})
+    if not res then return nil end
+    local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
+    if not ok or type(data)~="table" then return nil end
+    currentRank=data.rank or "player"
+    isBanned=data.banned==true
+    banInfo={reason=data.ban_reason,expires=data.ban_expires,frozen=data.frozen,freezeReason=data.frozen_reason}
+    return data
+end
+local function hasAccess(tab)
+    local r=RANKS[currentRank] or RANKS.player
+    for _,t in ipairs(r.access) do if t==tab then return true end end
+    return false
+end
+
 local function getGuiParent()
     if isMobile then return LocalPlayer:WaitForChild("PlayerGui") end
     if gethui then
@@ -232,20 +215,17 @@ local function findHeadPart(char)
     return nil
 end
 
--- ============ LOADING SCREEN (English) ============
+-- LOADING SCREEN
 local function createLoadingScreen()
     local sg=Instance.new("ScreenGui")
     sg.Name="_bs_loading" sg.ResetOnSpawn=false sg.DisplayOrder=2147483647
     sg.IgnoreGuiInset=true sg.ZIndexBehavior=Enum.ZIndexBehavior.Global sg.Parent=parent
-
     local dim=Instance.new("Frame")
     dim.Size=UDim2.new(1,0,1,0) dim.BackgroundColor3=Color3.fromRGB(0,0,0)
     dim.BackgroundTransparency=0.4 dim.BorderSizePixel=0 dim.Parent=sg
-
     local center=Instance.new("Frame")
     center.Size=UDim2.new(0,320,0,240) center.Position=UDim2.new(0.5,-160,0.5,-120)
     center.BackgroundTransparency=1 center.Parent=sg
-
     local circleSize=130
     local circle=Instance.new("Frame")
     circle.Size=UDim2.new(0,circleSize,0,circleSize)
@@ -254,11 +234,9 @@ local function createLoadingScreen()
     circle.BorderSizePixel=0 circle.Parent=center
     addCorner(circle,circleSize/2)
     local circleStroke=addStroke(circle,Color3.fromRGB(60,60,72),3)
-
     local spinnerContainer=Instance.new("Frame")
     spinnerContainer.Size=UDim2.new(1,0,1,0) spinnerContainer.BackgroundTransparency=1
     spinnerContainer.Parent=circle
-
     local segments={}
     for i=1,12 do
         local angle=(i-1)/12*math.pi*2
@@ -275,13 +253,11 @@ local function createLoadingScreen()
         addCorner(seg,4.5)
         table.insert(segments,seg)
     end
-
     local check=Instance.new("TextLabel")
     check.Size=UDim2.new(1,0,1,0) check.BackgroundTransparency=1
     check.Text="OK" check.TextColor3=UI.yellow check.TextSize=52
     check.Font=Enum.Font.GothamBold check.TextTransparency=1
     check.Parent=circle
-
     local stepText=Instance.new("TextLabel")
     stepText.Size=UDim2.new(1,0,0,26)
     stepText.Position=UDim2.new(0,0,0,circleSize+18)
@@ -289,7 +265,6 @@ local function createLoadingScreen()
     stepText.TextColor3=UI.text stepText.TextSize=15
     stepText.Font=Enum.Font.GothamBold stepText.TextTransparency=1
     stepText.Parent=center
-
     local subText=Instance.new("TextLabel")
     subText.Size=UDim2.new(1,0,0,20)
     subText.Position=UDim2.new(0,0,0,circleSize+48)
@@ -297,17 +272,14 @@ local function createLoadingScreen()
     subText.TextColor3=UI.textDim subText.TextSize=13
     subText.Font=Enum.Font.Gotham subText.TextTransparency=1
     subText.Parent=center
-
     local rotation=0 local spinning=true
     local conn=RunService.RenderStepped:Connect(function(dt)
         if not spinning then return end
         rotation=(rotation+dt*260)%360
         spinnerContainer.Rotation=rotation
     end)
-
     local function fadeInT(obj,dur) TweenService:Create(obj,TweenInfo.new(dur or 0.3),{TextTransparency=0}):Play() end
     local function fadeOutT(obj,dur) TweenService:Create(obj,TweenInfo.new(dur or 0.3),{TextTransparency=1}):Play() end
-
     local loader={}
     function loader.step(text,duration)
         spinning=true
@@ -318,7 +290,7 @@ local function createLoadingScreen()
         stepText.Text=text
         stepText.TextTransparency=1
         fadeInT(stepText,0.3)
-        task.wait(duration or LOADING_STEP_TIME)
+        task.wait(duration or 2)
     end
     function loader.success(text)
         text=text or "success"
@@ -328,19 +300,19 @@ local function createLoadingScreen()
         fadeInT(check,0.3)
         subText.Text=text subText.TextColor3=UI.good subText.TextTransparency=1
         fadeInT(subText,0.3)
-        task.wait(LOADING_SUCCESS_TIME)
+        task.wait(1.2)
         fadeOutT(check,0.25) fadeOutT(subText,0.25) fadeOutT(stepText,0.25)
         task.wait(0.3)
     end
     function loader.executor(text)
-        text=text or "unknown"
+        text=text or "Unknown"
         spinning=false
         spinnerContainer.Visible=false
         check.Text="OK" check.TextColor3=UI.yellow check.TextTransparency=1
         fadeInT(check,0.3)
         subText.Text=text subText.TextColor3=UI.yellow subText.TextTransparency=1
         fadeInT(subText,0.3)
-        task.wait(LOADING_SUCCESS_TIME)
+        task.wait(1.2)
         fadeOutT(check,0.25) fadeOutT(subText,0.25) fadeOutT(stepText,0.25)
         task.wait(0.3)
     end
@@ -352,7 +324,7 @@ local function createLoadingScreen()
         fadeInT(check,0.3)
         subText.Text=text subText.TextColor3=UI.bad subText.TextTransparency=1
         fadeInT(subText,0.3)
-        task.wait(LOADING_SUCCESS_TIME)
+        task.wait(1.2)
     end
     function loader.status(text,color)
         spinning=false
@@ -361,7 +333,7 @@ local function createLoadingScreen()
         fadeInT(check,0.3)
         subText.Text=text subText.TextColor3=color or UI.good subText.TextTransparency=1
         fadeInT(subText,0.3)
-        task.wait(1.2)
+        task.wait(1.5)
     end
     function loader.close()
         spinning=false
@@ -379,7 +351,7 @@ local function createLoadingScreen()
     return loader
 end
 
--- ============ NOTIFICATIONS ============
+-- NOTIFICATIONS
 local notifSg=Instance.new("ScreenGui")
 notifSg.Name="_bs_notif" notifSg.ResetOnSpawn=false notifSg.DisplayOrder=2147483646 notifSg.IgnoreGuiInset=true notifSg.ZIndexBehavior=Enum.ZIndexBehavior.Global notifSg.Parent=parent
 local notifHolder=Instance.new("Frame")
@@ -411,7 +383,7 @@ local function notify(text,color)
     end)
 end
 
--- ============ HUD ============
+-- HUD
 local hudEnabled=false
 local hudSg=Instance.new("ScreenGui")
 hudSg.Name="_bs_hud" hudSg.ResetOnSpawn=false hudSg.DisplayOrder=2147483635 hudSg.IgnoreGuiInset=true hudSg.ZIndexBehavior=Enum.ZIndexBehavior.Global hudSg.Parent=parent
@@ -445,7 +417,7 @@ RunService.RenderStepped:Connect(function(dt)
 end)
 local function setHudVisible(v) hudEnabled=v hudMain.Visible=v end
 
--- ============ TARGET INFO ============
+-- TARGET INFO
 local tinfoSg=Instance.new("ScreenGui")
 tinfoSg.Name="_bs_tinfo" tinfoSg.ResetOnSpawn=false tinfoSg.DisplayOrder=2147483634 tinfoSg.IgnoreGuiInset=true tinfoSg.ZIndexBehavior=Enum.ZIndexBehavior.Global tinfoSg.Parent=parent
 local tinfoCard=Instance.new("Frame")
@@ -467,7 +439,7 @@ tinfoHpText.Size=UDim2.new(1,-74,0,12) tinfoHpText.Position=UDim2.new(0,68,0,38)
 local tinfoWeapon=Instance.new("TextLabel")
 tinfoWeapon.Size=UDim2.new(1,-74,0,14) tinfoWeapon.Position=UDim2.new(0,68,0,50) tinfoWeapon.BackgroundTransparency=1 tinfoWeapon.Text="Weapon: --" tinfoWeapon.TextColor3=UI.warn tinfoWeapon.TextSize=11 tinfoWeapon.Font=Enum.Font.GothamBold tinfoWeapon.TextXAlignment=Enum.TextXAlignment.Left tinfoWeapon.ZIndex=4501 tinfoWeapon.Parent=tinfoCard
 
--- ============ POPUPS ============
+-- POPUPS
 local popupSg=Instance.new("ScreenGui")
 popupSg.Name="_bs_popups" popupSg.ResetOnSpawn=false popupSg.DisplayOrder=2147483647 popupSg.IgnoreGuiInset=true popupSg.ZIndexBehavior=Enum.ZIndexBehavior.Global popupSg.Parent=parent
 local popupQueue={} local showingPopup=false local currentPopupFrame=nil local popupIdsToAck={}
@@ -529,7 +501,7 @@ local function enqueuePopup(item)
     if not showingPopup then task.spawn(function() showNextPopup() end) end
 end
 
--- ============ LOCK OVERLAY ============
+-- LOCK OVERLAY
 local banOverlaySg=nil
 local function showLockOverlay(type,reason,duration)
     if banOverlaySg then banOverlaySg:Destroy() end
@@ -567,10 +539,11 @@ local function hideLockOverlay()
     if banOverlaySg then banOverlaySg:Destroy() banOverlaySg=nil end
 end
 
--- ============ KEY MENU (English) ============
+-- KEY MENU (with guard against duplicate)
 local keyPassed=false
 local keyMenuOpen=false
 local function showKeyMenu()
+    if keyPassed then return end
     if keyMenuOpen then return end
     keyMenuOpen=true
     local keySg=Instance.new("ScreenGui") keySg.Name="_bs_key" keySg.ResetOnSpawn=false keySg.DisplayOrder=2147483647 keySg.IgnoreGuiInset=true keySg.Parent=parent
@@ -581,10 +554,9 @@ local function showKeyMenu()
     local info=Instance.new("TextLabel") info.Size=UDim2.new(1,-24,0,18) info.Position=UDim2.new(0,12,0,52) info.BackgroundTransparency=1 info.Text="HWID  "..currentHWID info.TextColor3=UI.textDim info.TextSize=12 info.Font=Enum.Font.Code info.TextXAlignment=Enum.TextXAlignment.Left info.Parent=km
     local box=Instance.new("TextBox") box.Size=UDim2.new(1,-24,0,38) box.Position=UDim2.new(0,12,0,84) box.BackgroundColor3=UI.input box.BorderSizePixel=0 box.Text="" box.PlaceholderText="Enter license key" box.TextColor3=UI.text box.TextSize=14 box.Font=Enum.Font.Code box.ClearTextOnFocus=false box.Parent=km
     addCorner(box,4) addStroke(box,UI.border,1)
-    local status=Instance.new("TextLabel") status.Size=UDim2.new(1,-24,0,20) status.Position=UDim2.new(0,12,0,130) status.BackgroundTransparency=1 status.Text="Key is bound to HWID. Enter once." status.TextColor3=UI.textDim status.TextSize=11 status.Font=Enum.Font.Gotham status.TextXAlignment=Enum.TextXAlignment.Left status.Parent=km
+    local status=Instance.new("TextLabel") status.Size=UDim2.new(1,-24,0,20) status.Position=UDim2.new(0,12,0,130) status.BackgroundTransparency=1 status.Text="Key is bound to HWID." status.TextColor3=UI.textDim status.TextSize=11 status.Font=Enum.Font.Gotham status.TextXAlignment=Enum.TextXAlignment.Left status.Parent=km
     local btn=Instance.new("TextButton") btn.Size=UDim2.new(1,-24,0,40) btn.Position=UDim2.new(0,12,0,162) btn.BackgroundColor3=UI.panel2 btn.BorderSizePixel=0 btn.Text="ACTIVATE" btn.TextColor3=UI.accent btn.TextSize=13 btn.Font=Enum.Font.GothamBold btn.Parent=km
     addCorner(btn,4) addStroke(btn,UI.accent,1.5)
-    -- Асинхронная активация — не блокирует UI
     local activating=false
     local function tryActivate()
         if activating then return end
@@ -592,50 +564,55 @@ local function showKeyMenu()
         if input=="" then return end
         activating=true
         status.Text="Checking..." status.TextColor3=UI.warn
-        btn.Text="WAIT"
-        httpPostAsync(API_URL.."/activate",
-            {secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,key=input},
-            HTTP_TIMEOUT,
-            function(res,err)
-                activating=false
-                btn.Text="ACTIVATE"
-                if not res then
-                    status.Text=(err=="timeout") and "Server timeout. Try again." or "Network error"
-                    status.TextColor3=UI.bad
-                    return
+        btn.Text="WAIT..."
+        task.spawn(function()
+            local res=httpPost(API_URL.."/activate",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,key=input})
+            activating=false
+            btn.Text="ACTIVATE"
+            if not res then
+                status.Text="Network error" status.TextColor3=UI.bad
+                return
+            end
+            local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
+            if not ok or type(data)~="table" then
+                status.Text="Bad response" status.TextColor3=UI.bad
+                return
+            end
+            if data.status=="ok" then
+                currentRank=data.rank or "player" currentKey=input
+                localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
+                status.Text="Activated! Rank: "..string.upper(currentRank) status.TextColor3=UI.good
+                task.wait(1)
+                keyMenuOpen=false
+                pcall(function() keySg:Destroy() end)
+                if not keyPassed then
+                    keyPassed=true
+                    runMainGUI()
                 end
-                local ok,data=pcall(function() return HttpService:JSONDecode(res) end)
-                if not ok or type(data)~="table" then
-                    status.Text="Bad server response" status.TextColor3=UI.bad
-                    return
+            elseif data.status=="already" then
+                currentKey=input localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
+                status.Text="Key restored" status.TextColor3=UI.good
+                task.wait(1)
+                keyMenuOpen=false
+                pcall(function() keySg:Destroy() end)
+                if not keyPassed then
+                    keyPassed=true
+                    runMainGUI()
                 end
-                if data.status=="ok" then
-                    currentRank=data.rank or "player" currentKey=input
-                    localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
-                    status.Text="Activated! Rank: "..string.upper(currentRank) status.TextColor3=UI.good
-                    task.wait(1)
-                    keySg:Destroy() keyMenuOpen=false
-                    if not keyPassed then keyPassed=true runMainGUI() end
-                elseif data.status=="already" then
-                    currentKey=input localData.activated=true localData.key=input localData.rank=currentRank saveLocal(localData)
-                    status.Text="Key restored" status.TextColor3=UI.good
-                    task.wait(1)
-                    keySg:Destroy() keyMenuOpen=false
-                    if not keyPassed then keyPassed=true runMainGUI() end
-                elseif data.status=="limit" then
-                    status.Text="Activation limit reached" status.TextColor3=UI.warn
-                elseif data.status=="invalid" then
-                    status.Text="Invalid key" status.TextColor3=UI.bad
-                else
-                    status.Text=tostring(data.status) status.TextColor3=UI.bad
-                end
-            end)
+            elseif data.status=="limit" then
+                status.Text="Activation limit reached" status.TextColor3=UI.warn
+            elseif data.status=="invalid" then
+                status.Text="Invalid key" status.TextColor3=UI.bad
+            else
+                status.Text=tostring(data.status) status.TextColor3=UI.bad
+            end
+        end)
     end
     btn.MouseButton1Click:Connect(tryActivate)
     box.FocusLost:Connect(function(e) if e then tryActivate() end end)
 end
 
--- ============ RESET DIALOG ============
+-- RESET DIALOG
 local function showResetDialog(notice,callback)
     local n=notice
     if type(notice)=="string" then
@@ -655,10 +632,10 @@ local function showResetDialog(notice,callback)
     btn.MouseButton1Click:Connect(function() dialogSg:Destroy() if callback then callback() end end)
 end
 
--- ============ MAIN GUI ============
+-- MAIN GUI
 function runMainGUI()
 if not keyPassed then return end
-local S={unloaded=false,locked=false,lockType=nil,connections={},espEnabled=false,showTracer=true,showHP=true,showName=true,showDist=true,showChams=true,deadCleanup=false,showHitbar=true,skeletonEnabled=false,c4Enabled=false,c4Color=Color3.fromRGB(255,120,0),c4Timers={},espCache={},wallhackEnabled=false,mapSpawnedParts={},savedMapChildren={},wallhackState="idle",wallhackCountdownStart=0,xrayEnabled=false,xraySavedTransparency={},timeSliderValue=12,timeLockerEnabled=false,skyEnabled=false,skyObject=nil,skySaved=nil,seasonState=0,snowPlates={},rainSound=nil,fallLeavesEmitter=nil,rainEmitter=nil,snowEmitter=nil,winterHats={},fullbrightEnabled=false,fullbrightSaved=nil,noFogEnabled=false,noFogSaved=nil,noFogAtmSaved=nil,graphicEnabled=false,graphicObjects={},fpsBoostEnabled=false,fpsBoostSaved={decals={},particles={},beams={},atmosphere=nil,shadows=nil},cameraMode=1,camMetaHookInstalled=false,camOldNewIndex=nil,morphState=0,noRecoilEnabled=false,bunnyHopEnabled=false,speedEnabled=false,speedStep=3,speedThread=nil,headshotAssistEnabled=false,lastCamLook=nil,bigHeadEnabled=false,bigHeadTeamCheck=false,originalSizes={},noclipEnabled=false,aimEnabled=false,aimFov=200,aimPart="Head",aimWallCheck=true,aimTeamCheck=true,aimHolding=false,aimHoldKey=Enum.UserInputType.MouseButton2,wallbangEnabled=false,rawMeta=nil,oldNamecall=nil,launchEnabled=false,launchHeight=35,launchBasePos=nil,spinEnabled=false,spinSpeed=720,giantEnabled=false,giantScale=3,giantOriginal={},tallEnabled=false,tallScale=2,tallOriginal={},betaNoclip=false,betaFly=false,betaSpeedVal=50,targetPlayerName="",tinfoEnabled=false,tinfoLastUserId=nil,hudEnabled=false,accountStatus={state="loading",checked=false,lastPoll=nil,details=nil},feedbackCooldown=0,gtaEnabled=false,gtaObjects={},gtaSavedFog=nil,rainOn=false,rainEmitterObj=nil,rainAttachment=nil,lightningOn=false}
+local S={unloaded=false,locked=false,lockType=nil,connections={},espEnabled=false,showTracer=true,showHP=true,showName=true,showDist=true,showChams=true,deadCleanup=false,showHitbar=true,skeletonEnabled=false,c4Enabled=false,c4Color=Color3.fromRGB(255,120,0),c4Timers={},espCache={},wallhackEnabled=false,mapSpawnedParts={},savedMapChildren={},wallhackState="idle",wallhackCountdownStart=0,xrayEnabled=false,xraySavedTransparency={},timeSliderValue=12,timeLockerEnabled=false,skyEnabled=false,skyObject=nil,skySaved=nil,seasonState=0,snowPlates={},rainSound=nil,fallLeavesEmitter=nil,rainEmitter=nil,snowEmitter=nil,winterHats={},fullbrightEnabled=false,fullbrightSaved=nil,noFogEnabled=false,noFogSaved=nil,noFogAtmSaved=nil,graphicEnabled=false,graphicObjects={},fpsBoostEnabled=false,fpsBoostSaved={decals={},particles={},beams={},atmosphere=nil,shadows=nil},cameraMode=1,camMetaHookInstalled=false,camOldNewIndex=nil,morphState=0,noRecoilEnabled=false,bunnyHopEnabled=false,speedEnabled=false,speedStep=3,speedThread=nil,headshotAssistEnabled=false,lastCamLook=nil,bigHeadEnabled=false,bigHeadTeamCheck=false,originalSizes={},noclipEnabled=false,aimEnabled=false,aimFov=200,aimPart="Head",aimWallCheck=true,aimTeamCheck=true,aimHolding=false,aimHoldKey=Enum.UserInputType.MouseButton2,wallbangEnabled=false,rawMeta=nil,oldNamecall=nil,launchEnabled=false,launchHeight=35,launchBasePos=nil,spinEnabled=false,spinSpeed=720,giantEnabled=false,giantScale=3,giantOriginal={},tallEnabled=false,tallScale=2,tallOriginal={},betaNoclip=false,betaFly=false,betaSpeedVal=50,targetPlayerName="",tinfoEnabled=false,tinfoLastUserId=nil,hudEnabled=false,accountStatus={state="loading",checked=false,lastPoll=nil,details=nil},feedbackCooldown=0,gtaEnabled=false,gtaObjects={},gtaSavedFog=nil,rainOn=false,rainEmitterObj=nil,rainAttachment=nil}
 local KEEP_FOLDERS={Zones=true,ReplicationFocus=true,DeathBarriers=true,Barriers=true}
 local MORPHS={{name="NoModel",id=0},{name="Tung Tung Sahur",id=129575258275209},{name="Kotost",id=9834014321}}
 local CONFIG_KEYS={"espEnabled","showTracer","showHP","showName","showDist","showChams","deadCleanup","showHitbar","skeletonEnabled","c4Enabled","wallhackEnabled","xrayEnabled","timeSliderValue","timeLockerEnabled","skyEnabled","seasonState","fullbrightEnabled","noFogEnabled","graphicEnabled","fpsBoostEnabled","cameraMode","morphState","noRecoilEnabled","bunnyHopEnabled","speedEnabled","speedStep","headshotAssistEnabled","bigHeadEnabled","bigHeadTeamCheck","noclipEnabled","aimEnabled","aimFov","aimPart","aimWallCheck","aimTeamCheck","wallbangEnabled","launchEnabled","launchHeight","spinEnabled","spinSpeed","giantEnabled","giantScale","tallEnabled","tallScale","notificationsEnabled","hudEnabled","tinfoEnabled","gtaEnabled","rainOn"}
@@ -679,8 +656,8 @@ pcall(function()
         vpY=workspace.CurrentCamera.ViewportSize.Y
     end
 end)
-local MAIN_W=math.min(900,math.max(320,vpX-40))
-local MAIN_H=math.min(640,math.max(280,vpY-60))
+local MAIN_W=math.min(900,math.max(340,vpX-40))
+local MAIN_H=math.min(640,math.max(320,vpY-60))
 
 local mainOk,main
 if not isMobile then
@@ -690,7 +667,7 @@ if not main or not mainOk then main=Instance.new("Frame") end
 main.Size=UDim2.new(0,MAIN_W,0,MAIN_H) main.Position=UDim2.new(0.5,-MAIN_W/2,0.4,-MAIN_H/2)
 main.BackgroundColor3=UI.bg main.BorderSizePixel=0 main.Active=true main.Draggable=true main.Parent=sg main.ZIndex=1000
 addCorner(main,6) addStroke(main,UI.border,1)
-local hasCanvas=pcall(function() return main.GroupTransparency end) and main:IsA("CanvasGroup")
+local hasCanvas=main:IsA("CanvasGroup")
 
 local topbar=Instance.new("Frame")
 topbar.Size=UDim2.new(1,0,0,44) topbar.BackgroundColor3=UI.topbar topbar.BorderSizePixel=0 topbar.Parent=main topbar.ZIndex=1001
@@ -702,7 +679,7 @@ accentLine.Size=UDim2.new(0,80,0,2) accentLine.Position=UDim2.new(0,16,1,-2) acc
 local title=Instance.new("TextLabel")
 title.Size=UDim2.new(0,110,1,0) title.Position=UDim2.new(0,18,0,0) title.BackgroundTransparency=1 title.Text="WorkClient" title.TextColor3=UI.text title.TextSize=15 title.Font=Enum.Font.GothamBold title.TextXAlignment=Enum.TextXAlignment.Left title.Parent=topbar title.ZIndex=1002
 local versionLbl=Instance.new("TextLabel")
-versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.6" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
+versionLbl.Size=UDim2.new(0,56,1,0) versionLbl.Position=UDim2.new(0,124,0,0) versionLbl.BackgroundTransparency=1 versionLbl.Text="v30.7" versionLbl.TextColor3=UI.textDim versionLbl.TextSize=11 versionLbl.Font=Enum.Font.Code versionLbl.TextXAlignment=Enum.TextXAlignment.Left versionLbl.Parent=topbar versionLbl.ZIndex=1002
 local nickLabel=Instance.new("TextLabel")
 nickLabel.Size=UDim2.new(0,300,1,0) nickLabel.Position=UDim2.new(0,190,0,0)
 nickLabel.BackgroundTransparency=1 nickLabel.Text="-- "..LocalPlayer.Name.." --"
@@ -722,9 +699,19 @@ updateRankDisplay=function()
     rankLabel.TextColor3=(RANKS[currentRank] or RANKS.player).color
 end
 
-local sidebar=Instance.new("Frame")
-sidebar.Size=UDim2.new(0,200,1,-70) sidebar.Position=UDim2.new(0,12,0,54) sidebar.BackgroundColor3=UI.panel sidebar.BorderSizePixel=0 sidebar.Parent=main sidebar.ZIndex=1001
-addCorner(sidebar,4) addStroke(sidebar,UI.border,1)
+-- Sidebar with SCROLLING so tabs never disappear on mobile
+local sidebarOuter=Instance.new("Frame")
+sidebarOuter.Size=UDim2.new(0,200,1,-70) sidebarOuter.Position=UDim2.new(0,12,0,54) sidebarOuter.BackgroundColor3=UI.panel sidebarOuter.BorderSizePixel=0 sidebarOuter.Parent=main sidebarOuter.ZIndex=1001
+addCorner(sidebarOuter,4) addStroke(sidebarOuter,UI.border,1)
+
+local sidebar=Instance.new("ScrollingFrame")
+sidebar.Size=UDim2.new(1,-4,1,-4) sidebar.Position=UDim2.new(0,2,0,2)
+sidebar.BackgroundTransparency=1 sidebar.BorderSizePixel=0
+sidebar.ScrollBarThickness=3 sidebar.ScrollBarImageColor3=UI.borderHi
+sidebar.CanvasSize=UDim2.new(0,0,0,0)
+sidebar.AutomaticCanvasSize=Enum.AutomaticSize.Y
+sidebar.Parent=sidebarOuter sidebar.ZIndex=1002
+
 local content=Instance.new("Frame")
 content.Size=UDim2.new(1,-234,1,-70) content.Position=UDim2.new(0,222,0,54) content.BackgroundColor3=UI.panel content.BorderSizePixel=0 content.Parent=main content.ZIndex=1001 content.ClipsDescendants=true
 addCorner(content,4) addStroke(content,UI.border,1)
@@ -751,7 +738,7 @@ local function switchTab(name)
 end
 local function createTabButton(name,displayName,color)
     local btn=Instance.new("TextButton")
-    btn.Size=UDim2.new(1,-16,0,38) btn.Position=UDim2.new(0,8,0,10+tabCounter*44) tabCounter=tabCounter+1
+    btn.Size=UDim2.new(1,-12,0,36) btn.Position=UDim2.new(0,6,0,6+tabCounter*40) tabCounter=tabCounter+1
     btn.BackgroundColor3=UI.panel2 btn.BorderSizePixel=0 btn.Text=displayName btn.TextColor3=UI.textDim btn.TextSize=13 btn.Font=Enum.Font.GothamBold btn.TextXAlignment=Enum.TextXAlignment.Left btn.Parent=sidebar btn.ZIndex=1002
     addCorner(btn,4) addStroke(btn,UI.border,1)
     local pad=Instance.new("UIPadding") pad.PaddingLeft=UDim.new(0,14) pad.Parent=btn
@@ -818,7 +805,6 @@ local function makeSlider(parent_,labelText,xPos,yPos,w,minVal,maxVal,defaultVal
     return {setValue=update}
 end
 
--- helpers
 local function getPlayerTeamId(plr)
     if not plr then return nil end
     local ok,attr=pcall(function() return plr:GetAttribute("Team") end)
@@ -896,7 +882,6 @@ local function getWeaponName(char)
     return "--"
 end
 
--- poll / lock
 local function setStatusState(state,details)
     S.accountStatus=S.accountStatus or {}
     S.accountStatus.checked=true S.accountStatus.state=state
@@ -967,39 +952,34 @@ local function applyAccountStatus(data)
     pcall(updateStatusCard)
 end
 
--- polling — использует асинхронный запрос чтобы не блокировать UI долго
 local function startPollLoop()
     task.spawn(function()
         while not S.unloaded do
-            httpPostAsync(API_URL.."/poll",{secret=API_SECRET,hwid=currentHWID},HTTP_TIMEOUT,function(res,err)
-                if S.unloaded then return end
-                if not res then
-                    setStatusState("error","No response from server")
-                    return
-                end
+            local res=httpPost(API_URL.."/poll",{secret=API_SECRET,hwid=currentHWID})
+            if res then
                 local ok2,data=pcall(function() return HttpService:JSONDecode(res) end)
-                if not ok2 or type(data)~="table" then
-                    setStatusState("error","Bad response")
-                elseif data.status=="unknown" then
-                    setStatusState("unknown","Player not found in DB")
-                elseif data.status=="ok" then
-                    applyAccountStatus(data)
-                    if data.reconnect_pending then
-                        pcall(function() httpPost(API_URL.."/reconnect/ack",{secret=API_SECRET,hwid=currentHWID}) end)
-                        pcall(function() httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId}) end)
-                        pcall(updateRankDisplay)
-                        notify("Reconnected to server",UI.accent)
+                if ok2 and type(data)=="table" then
+                    if data.status=="unknown" then
+                        setStatusState("unknown","Player not found in DB")
+                    elseif data.status=="ok" then
+                        applyAccountStatus(data)
+                        if data.reconnect_pending then
+                            pcall(function() httpPost(API_URL.."/reconnect/ack",{secret=API_SECRET,hwid=currentHWID}) end)
+                            pcall(function() httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId}) end)
+                            pcall(updateRankDisplay)
+                            notify("Reconnected to server",UI.accent)
+                        end
+                    else
+                        setStatusState("error","Server: "..tostring(data.status))
                     end
-                else
-                    setStatusState("error","Server: "..tostring(data.status))
                 end
-            end)
+            end
             task.wait(POLL_INTERVAL)
         end
     end)
 end
 
--- C4 / KILL FEED / WALLHACK / XRAY / SKY / GTA / RAIN / SEASONS / LIGHTING / CAMERA / MORPH / BETA / ESP — без изменений в логике
+-- C4 WATCH
 local lastBombWeapon=nil
 local function findC4Bomb()
     local debris=workspace:FindFirstChild("Debris") if not debris then return nil,nil end
@@ -1021,6 +1001,7 @@ addConn(RunService.Heartbeat:Connect(function()
     elseif not w then lastBombWeapon=nil end
 end))
 
+-- KILL FEED
 local charToPlayer={}
 local function indexChar(plr) if plr.Character then charToPlayer[plr.Character]=plr end end
 for _,plr in ipairs(Players:GetPlayers()) do if plr~=LocalPlayer then indexChar(plr) addConn(plr.CharacterAdded:Connect(function(c) charToPlayer[c]=plr end)) end end
@@ -1040,6 +1021,7 @@ local cfFolder=getCharsFolder()
 if cfFolder then setupKillFeed(cfFolder)
 else addConn(workspace.ChildAdded:Connect(function(c) if c.Name=="Characters" then setupKillFeed(c) end end)) end
 
+-- WALLHACK
 local function hasHumanoidInside(obj)
     if obj:IsA("Humanoid") then return true end
     if obj:FindFirstChildOfClass("Humanoid") then return true end
@@ -2060,7 +2042,7 @@ updateStatusCard=function()
     if not st.checked then
         statusIcon.Text="O" statusIcon.TextColor3=UI.textDim
         statusTitle.Text="Checking..." statusTitle.TextColor3=UI.textDim
-        statusDetails.Text="Waiting for server response...\n"..lastPoll return
+        statusDetails.Text="Waiting for server...\n"..lastPoll return
     end
     local state=st.state
     if state=="banned" or st.banned then
@@ -2193,10 +2175,10 @@ fbSendBtn.MouseButton1Click:Connect(function()
     end)
     task.spawn(function()
         local okRun,errRun=pcall(function()
-            local res,errCode=httpPost(API_URL.."/feedback/submit",{
+            local res=httpPost(API_URL.."/feedback/submit",{
                 secret=API_SECRET, hwid=currentHWID, nickname=LocalPlayer.Name, rank=currentRank, message=msg
             })
-            if not res then fbStatus.Text="Network error ("..tostring(errCode or "no response")..")" fbStatus.TextColor3=UI.bad return end
+            if not res then fbStatus.Text="Network error" fbStatus.TextColor3=UI.bad return end
             local okDec,data=pcall(function() return HttpService:JSONDecode(res) end)
             if not okDec or type(data)~="table" then fbStatus.Text="Response error" fbStatus.TextColor3=UI.bad return end
             local status=tostring(data.status or "unknown")
@@ -2768,126 +2750,111 @@ createTabButton("configs","Configs",UI.good)
 createTabButton("feedback","Feedback",UI.accent)
 createTabButton("settings","Settings",UI.accent)
 switchTab("main")
-end
 
--- ============ ЗАПУСК С LOADING SCREEN (English) ============
-local function clearServerNotice()
-    pcall(function() httpPost(API_URL.."/clear_notice",{secret=API_SECRET,hwid=currentHWID}) end)
-end
+-- Start polling in background (no blocking at startup)
+startPollLoop()
 
--- ============ ГЛАВНЫЙ ФИКС ============
--- Логика: если локально уже есть ключ → сразу GUI (без запроса к серверу!).
--- Сервер опрашиваем в фоне через polling. Если ключа нет → короткая проверка сервера
--- через асинхронный запрос, и если сервер не ответил за HTTP_TIMEOUT — показываем меню ключа.
+-- Async register to catch reset_notice / AdminSkip in background
+task.spawn(function()
+    local data=registerOnServer()
+    if not data then return end
+    if S.unloaded then return end
+    if data.reset_notice and data.reset_notice~="" then
+        pcall(function() showResetDialog(data.reset_notice,function()
+            pcall(function() httpPost(API_URL.."/clear_notice",{secret=API_SECRET,hwid=currentHWID}) end)
+            localData.key=nil localData.rank=nil localData.activated=nil
+            saveLocal(localData)
+            pcall(updateRankDisplay)
+        end) end)
+    end
+    -- If admin gave ADMIN_SKIP but user has no local key (rare case) - update
+    if data.activated_key and data.activated_key~="" and (not localData.key or localData.key=="") then
+        localData.key=data.activated_key localData.rank=data.rank or "player"
+        saveLocal(localData)
+        currentKey=data.activated_key
+    end
+end)
+
+end -- end runMainGUI
+
+-- ============ STARTUP ============
 local function startFlow()
     local loader=createLoadingScreen()
 
-    -- 1. Loading script + executor name
-    loader.step("Loading script",LOADING_STEP_TIME)
+    loader.step("Loading script",2)
     if executorName then loader.executor(executorName) else loader.executor("Unknown") end
 
-    -- 2. Connecting API
-    loader.step("Connecting API",LOADING_STEP_TIME)
+    loader.step("Connecting API",2)
     loader.success()
 
-    -- 3. Testing server connection
-    loader.step("Testing server connection",LOADING_STEP_TIME)
+    loader.step("Checking script integrity",2)
     loader.success()
 
-    -- 4. Checking script integrity
-    loader.step("Checking script integrity",LOADING_STEP_TIME)
-    loader.success()
-
-    -- 5. Checking active key
-    loader.step("Checking active key",LOADING_STEP_TIME)
+    loader.step("Checking active key",2)
 
     local hasKeyLocal=localData.key and localData.key~=""
 
-    -- ЕСЛИ локально ключ есть — не мучаем сервер, сразу ГУИ
-    if hasKeyLocal then
+    if not hasKeyLocal then
+        -- Try server quick check (max 3 sec) to catch ADMIN_SKIP / reset_notice
+        local timeout=tick()+3
+        local done=false
+        local res=nil
+        task.spawn(function()
+            res=httpPost(API_URL.."/register",{secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId})
+            done=true
+        end)
+        while not done and tick()<timeout do task.wait(0.1) end
+
+        local data=nil
+        if res then
+            local ok,d=pcall(function() return HttpService:JSONDecode(res) end)
+            if ok and type(d)=="table" then data=d end
+        end
+
+        if data and data.reset_notice and data.reset_notice~="" then
+            loader.close()
+            showResetDialog(data.reset_notice,function()
+                pcall(function() httpPost(API_URL.."/clear_notice",{secret=API_SECRET,hwid=currentHWID}) end)
+                localData.key=nil localData.rank=nil localData.activated=nil
+                saveLocal(localData)
+                showKeyMenu()
+            end)
+            return
+        end
+
+        if data and data.activated_key and data.activated_key~="" then
+            localData.key=data.activated_key
+            localData.rank=data.rank or "player"
+            saveLocal(localData)
+            currentKey=data.activated_key
+            currentRank=localData.rank
+            loader.success()
+        else
+            loader.fail("No active key")
+            task.wait(0.3)
+            loader.close()
+            showKeyMenu()
+            return
+        end
+    else
         currentKey=localData.key
         currentRank=localData.rank or "player"
         loader.success()
-        -- 6. Checking account status — показываем "OK" мгновенно
-        loader.step("Checking account status",LOADING_STEP_TIME)
-        loader.status("All good",UI.good)
-        loader.close()
-        keyPassed=true
-        runMainGUI()
-        return
     end
 
-    -- Локального ключа нет — делаем один асинхронный запрос с таймаутом
-    local timeout=tick()+HTTP_TIMEOUT
-    local done=false
-    local data=nil
-    httpPostAsync(API_URL.."/register",
-        {secret=API_SECRET,hwid=currentHWID,nickname=LocalPlayer.Name,roblox_id=LocalPlayer.UserId},
-        HTTP_TIMEOUT,
-        function(res,err)
-            if res then
-                local ok,d=pcall(function() return HttpService:JSONDecode(res) end)
-                if ok and type(d)=="table" then data=d end
-            end
-            done=true
-        end)
-
-    -- Ждём результат максимум HTTP_TIMEOUT секунд
-    while not done and tick()<timeout do task.wait(0.1) end
-
-    -- Reset notice от админа
-    if data and data.reset_notice and data.reset_notice~="" then
-        loader.close()
-        showResetDialog(data.reset_notice,function()
-            clearServerNotice()
-            localData.key=nil localData.rank=nil localData.activated=nil
-            saveLocal(localData)
-            showKeyMenu()
-        end)
-        return
-    end
-
-    local hasKeyOnServer=data and data.activated_key and data.activated_key~=""
-
-    if not hasKeyOnServer then
-        loader.fail("no active key")
-        task.wait(0.3)
-        loader.close()
-        showKeyMenu()
-        return
-    end
-
-    localData.key=data.activated_key
-    localData.rank=data.rank or "player"
-    saveLocal(localData)
-    currentKey=data.activated_key
-    currentRank=localData.rank
-    loader.success()
-
-    -- 6. Checking account status
-    loader.step("Checking account status",LOADING_STEP_TIME)
+    loader.step("Checking account status",2)
     local statusText="All good"
     local statusColor=UI.good
-    local isLockedAcc=false
     if data then
-        if data.banned then
-            statusText="Account banned"; statusColor=UI.bad; isLockedAcc=true
-        elseif data.frozen then
-            statusText="Account frozen"; statusColor=UI.freeze; isLockedAcc=true
-        elseif data.check_status then
-            statusText="Under review"; statusColor=UI.warn
-        end
+        if data.banned then statusText="Account banned"; statusColor=UI.bad
+        elseif data.frozen then statusText="Account frozen"; statusColor=UI.freeze
+        elseif data.check_status then statusText="Under review"; statusColor=UI.warn end
     end
     loader.status(statusText,statusColor)
     loader.close()
 
     keyPassed=true
     runMainGUI()
-
-    -- Если аккаунт забанен/заморожен — polling при следующем тике всё заблокирует
-    if isLockedAcc then
-        task.wait(0.6)
-    end
 end
 
 task.spawn(function()
